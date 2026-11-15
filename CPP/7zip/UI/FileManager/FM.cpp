@@ -1,6 +1,7 @@
 // FM.cpp
 
 #include "StdAfx.h"
+#include "ArkvelloTheme.h"
 
 #include "../../../Common/MyWindows.h"
 
@@ -329,6 +330,8 @@ static BOOL InitInstance(int nCmdShow)
   if (!wnd.Create(kWindowClass, title, style,
     x, y, xSize, ySize, NULL, NULL, g_hInstance, NULL))
     return FALSE;
+
+  NArkvello::Attach(wnd);
 
   /*
   // doesn't work

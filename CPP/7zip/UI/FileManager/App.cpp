@@ -1,6 +1,7 @@
 // App.cpp
 
 #include "StdAfx.h"
+#include "ArkvelloTheme.h"
 
 #include "resource.h"
 #include "OverwriteDialogRes.h"
@@ -150,6 +151,7 @@ static void CreateToolbar(HWND parent,
       | WS_CHILD
       | WS_VISIBLE
       | TBSTYLE_FLAT
+      | TBSTYLE_LIST
       | TBSTYLE_TOOLTIPS
       | TBSTYLE_WRAPABLE
       // | TBSTYLE_AUTOSIZE
@@ -164,11 +166,14 @@ static void CreateToolbar(HWND parent,
   // backward compatibility.
   toolBar.ButtonStructSize();
 
+  const int iconSize = NArkvello::Scale(parent, largeButtons ? 24 : 20);
   imageList.Create(
-      largeButtons ? 48: 24,
-      largeButtons ? 36: 24,
+      iconSize, iconSize,
       ILC_MASK | ILC_COLOR32, 0, 0);
   toolBar.SetImageList(0, imageList);
+  ::SendMessage(toolBar, WM_SETFONT, (WPARAM)NArkvello::Font(parent), FALSE);
+  ::SendMessage(toolBar, TB_SETPADDING, 0, MAKELPARAM(NArkvello::Scale(parent,30), NArkvello::Scale(parent,16)));
+  ::SendMessage(toolBar, TB_SETBUTTONSIZE, 0, MAKELPARAM(NArkvello::Scale(parent,40), NArkvello::Scale(parent,44)));
 }
 
 
@@ -227,7 +232,7 @@ static void AddButton(
   but.iBitmap = 0;
   but.idCommand = butInfo.CommandID;
   but.fsState = TBSTATE_ENABLED;
-  but.fsStyle = TBSTYLE_BUTTON;
+  but.fsStyle = TBSTYLE_BUTTON | BTNS_AUTOSIZE;
   but.dwData = 0;
 
   UString s = butInfo.GetText();
@@ -236,10 +241,8 @@ static void AddButton(
     but.iString = (INT_PTR)(LPCWSTR)s;
 
   but.iBitmap = imageList.GetImageCount();
-  HBITMAP b = ::LoadBitmap(g_hInstance,
-      large ?
-      MAKEINTRESOURCE(butInfo.BitmapResID):
-      MAKEINTRESOURCE(butInfo.Bitmap2ResID));
+  HBITMAP b = NArkvello::CommandBitmap(toolBar, (unsigned)butInfo.CommandID,
+      NArkvello::Scale(toolBar, large ? 24 : 20));
   if (b)
   {
     imageList.AddMasked(b, RGB(255, 0, 255));
@@ -270,6 +273,7 @@ void CApp::ReloadToolbars()
         AddButton(_buttonsImageList, _toolBar, g_StandardButtons[i], ShowButtonsLables, LargeButtons);
 
     _toolBar.AutoSize();
+    NArkvello::Apply(_window);
   }
 }
 

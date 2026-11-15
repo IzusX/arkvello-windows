@@ -406,6 +406,7 @@ private:
   BOOL OnEndLabelEdit(LV_DISPINFOW * lpnmh);
   void OnColumnClick(LPNMLISTVIEW info);
   bool OnCustomDraw(LPNMLVCUSTOMDRAW lplvcd, LRESULT &result);
+  void DrawReportRow(const DRAWITEMSTRUCT &draw);
 
 
   void ChangeWindowSize(int xSize, int ySize);

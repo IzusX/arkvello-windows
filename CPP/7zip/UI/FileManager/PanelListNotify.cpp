@@ -1,6 +1,7 @@
 // PanelListNotify.cpp
 
 #include "StdAfx.h"
+#include "ArkvelloTheme.h"
 
 #include "resource.h"
 
@@ -674,9 +675,7 @@ bool CPanel::OnNotifyList(LPNMHDR header, LRESULT &result)
 
     case NM_CUSTOMDRAW:
     {
-      if (_mySelectMode || (_markDeletedItems && _thereAreDeletedItems))
-        return OnCustomDraw((LPNMLVCUSTOMDRAW)header, result);
-      break;
+      return OnCustomDraw((LPNMLVCUSTOMDRAW)header, result);
     }
     case LVN_BEGINDRAG:
     {
@@ -695,6 +694,70 @@ bool CPanel::OnNotifyList(LPNMHDR header, LRESULT &result)
   return false;
 }
 
+void CPanel::DrawReportRow(const DRAWITEMSTRUCT &draw)
+{
+  const NArkvello::CColors &p = NArkvello::Colors();
+  const int saved = SaveDC(draw.hDC);
+  const unsigned realIndex = (unsigned)draw.itemData;
+  const bool marked = _mySelectMode && realIndex != kParentIndex
+      && realIndex < _selectedStatusVector.Size() && _selectedStatusVector[realIndex];
+  const bool selected = _mySelectMode ? marked : (draw.itemState & ODS_SELECTED) != 0;
+  const bool active = ::GetFocus() == (HWND)_listView;
+  const bool fullRow = (_listView.GetExtendedListViewStyle() & LVS_EX_FULLROWSELECT) != 0;
+  HBRUSH brush = CreateSolidBrush(p.Panel);
+  FillRect(draw.hDC, &draw.rcItem, brush); DeleteObject(brush);
+  RECT selection = draw.rcItem;
+  if (!fullRow) ListView_GetItemRect((HWND)_listView, (int)draw.itemID, &selection, LVIR_LABEL);
+  if (selected)
+  {
+    brush = CreateSolidBrush(active ? p.Selection : p.InactiveSelection);
+    FillRect(draw.hDC, &selection, brush); DeleteObject(brush);
+  }
+  SetBkMode(draw.hDC, TRANSPARENT);
+  SelectObject(draw.hDC, NArkvello::Font(_listView));
+  const bool deleted = _markDeletedItems && _thereAreDeletedItems && IsItem_Deleted(realIndex);
+  HWND header = ListView_GetHeader((HWND)_listView);
+  const int count = Header_GetItemCount(header);
+  for (int order = 0; order < count; order++)
+  {
+    const int column = Header_OrderToIndex(header, order);
+    RECT cell; Header_GetItemRect(header, column, &cell);
+    MapWindowPoints(header, _listView, (POINT *)&cell, 2);
+    cell.top = draw.rcItem.top; cell.bottom = draw.rcItem.bottom;
+    const int cellSaved = SaveDC(draw.hDC);
+    IntersectClipRect(draw.hDC, cell.left, cell.top, cell.right, cell.bottom);
+    cell.left += NArkvello::Scale(*this,8); cell.right -= NArkvello::Scale(*this,8);
+    if (column == 0)
+    {
+      LVITEMW item = {}; item.mask = LVIF_IMAGE | LVIF_STATE; item.iItem = (int)draw.itemID;
+      item.stateMask = LVIS_OVERLAYMASK | LVIS_CUT;
+      SendMessageW(_listView, LVM_GETITEMW, 0, (LPARAM)&item);
+      HIMAGELIST images = ListView_GetImageList((HWND)_listView, LVSIL_SMALL);
+      int w = 0, h = 0; ImageList_GetIconSize(images, &w, &h);
+      ImageList_Draw(images, item.iImage, draw.hDC, cell.left,
+          cell.top + (cell.bottom - cell.top - h) / 2,
+          ILD_TRANSPARENT | (item.state & LVIS_OVERLAYMASK) | ((item.state & LVIS_CUT) ? ILD_BLEND50 : 0));
+      cell.left += w + NArkvello::Scale(*this,8);
+    }
+    wchar_t text[4096]; LVITEMW item = {}; item.iSubItem = column;
+    item.pszText = text; item.cchTextMax = 4096;
+    SendMessageW(_listView, LVM_GETITEMTEXTW, draw.itemID, (LPARAM)&item);
+    HDITEMW columnInfo = {}; columnInfo.mask = HDI_FORMAT;
+    SendMessageW(header, HDM_GETITEMW, (WPARAM)column, (LPARAM)&columnInfo);
+    const bool highlighted = selected && (fullRow || column == 0);
+    SetTextColor(draw.hDC, highlighted && p.HighContrast ? p.OnAccent : deleted ? p.Error : p.Text);
+    DrawTextW(draw.hDC, text, -1, &cell, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX
+        | ((columnInfo.fmt & HDF_RIGHT) ? DT_RIGHT : DT_LEFT));
+    RestoreDC(draw.hDC, cellSaved);
+  }
+  if ((draw.itemState & ODS_FOCUS) && active)
+  {
+    RECT focus = fullRow ? draw.rcItem : selection;
+    brush = CreateSolidBrush(p.Focus); FrameRect(draw.hDC, &focus, brush); DeleteObject(brush);
+  }
+  RestoreDC(draw.hDC, saved);
+}
+
 bool CPanel::OnCustomDraw(LPNMLVCUSTOMDRAW lplvcd, LRESULT &result)
 {
   switch (lplvcd->nmcd.dwDrawStage)
@@ -704,6 +767,7 @@ bool CPanel::OnCustomDraw(LPNMLVCUSTOMDRAW lplvcd, LRESULT &result)
     return true;
     
   case CDDS_ITEMPREPAINT:
+  {
     /*
     SelectObject(lplvcd->nmcd.hdc,
     GetFontForItem(lplvcd->nmcd.dwItemSpec,
@@ -714,22 +778,36 @@ bool CPanel::OnCustomDraw(LPNMLVCUSTOMDRAW lplvcd, LRESULT &result)
     lplvcd->nmcd.lItemlParam);
     */
     const unsigned realIndex = (unsigned)lplvcd->nmcd.lItemlParam;
+    const NArkvello::CColors &colors = NArkvello::Colors();
+    lplvcd->clrText = colors.Text;
     lplvcd->clrTextBk = _listView.GetBkColor();
+    const bool selected = (lplvcd->nmcd.uItemState & CDIS_SELECTED) != 0;
+    if (selected)
+    {
+      lplvcd->clrTextBk = ::GetFocus() == (HWND)_listView ? colors.Selection : colors.InactiveSelection;
+      if (colors.HighContrast) lplvcd->clrText = colors.OnAccent;
+      lplvcd->nmcd.uItemState &= ~CDIS_SELECTED;
+    }
     if (_mySelectMode)
     {
       if (realIndex != kParentIndex && _selectedStatusVector[realIndex])
-       lplvcd->clrTextBk = RGB(255, 192, 192);
+      {
+        lplvcd->clrTextBk = colors.Selection;
+        if (colors.HighContrast) lplvcd->clrText = colors.OnAccent;
+      }
     }
 
     if (_markDeletedItems && _thereAreDeletedItems)
     {
       if (IsItem_Deleted(realIndex))
-        lplvcd->clrText = RGB(255, 0, 0);
+        lplvcd->clrText = colors.Error;
     }
     // lplvcd->clrText = RGB(0, 0, 0);
     // result = CDRF_NEWFONT;
-    result = CDRF_NOTIFYITEMDRAW;
+    SelectObject(lplvcd->nmcd.hdc, NArkvello::Font(_listView));
+    result = CDRF_NEWFONT;
     return true;
+  }
     
     // return false;
     // return true;

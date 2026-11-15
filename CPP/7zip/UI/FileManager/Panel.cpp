@@ -1,6 +1,7 @@
 // Panel.cpp
 
 #include "StdAfx.h"
+#include "ArkvelloTheme.h"
 
 #include <windowsx.h>
 
@@ -122,6 +123,14 @@ LRESULT CPanel::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
   // g_NumMessages++;
   switch (message)
   {
+    case WM_MEASUREITEM:
+      if (((MEASUREITEMSTRUCT *)lParam)->CtlType == ODT_LISTVIEW)
+      { ((MEASUREITEMSTRUCT *)lParam)->itemHeight = (UINT)NArkvello::Scale(*this,28); return TRUE; }
+      break;
+    case WM_DRAWITEM:
+      if (((DRAWITEMSTRUCT *)lParam)->hwndItem == (HWND)_listView)
+      { DrawReportRow(*(DRAWITEMSTRUCT *)lParam); return TRUE; }
+      break;
     case kShiftSelectMessage:
       OnShiftSelectMessage();
       return 0;
@@ -390,7 +399,7 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
 
   DWORD style = WS_CHILD | WS_VISIBLE; //  | WS_BORDER ; // | LVS_SHAREIMAGELISTS; //  | LVS_SHOWSELALWAYS;
 
-  style |= LVS_SHAREIMAGELISTS;
+  style |= LVS_SHAREIMAGELISTS | LVS_SHOWSELALWAYS | LVS_OWNERDRAWFIXED;
   // style  |= LVS_AUTOARRANGE;
   style |= WS_CLIPCHILDREN;
   style |= WS_CLIPSIBLINGS;
@@ -411,7 +420,7 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
   */
 
   DWORD exStyle;
-  exStyle = WS_EX_CLIENTEDGE;
+  exStyle = 0;
 
   if (!_listView.CreateEx(exStyle, style, 0, 0, 116, 260,
       *this, (HMENU)(UINT_PTR)(_baseID + 1), g_hInstance, NULL))
@@ -449,29 +458,9 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
     // {VIEW_NEWFOLDER, kCreateFolderID, TBSTATE_ENABLED, BTNS_BUTTON, 0L, 0},
   };
 
-#ifdef Z7_USE_DYN_ComCtl32Version
-  if (g_ComCtl32Version >= MAKELONG(71, 4))
-#endif
-  {
-    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    icex.dwICC  = ICC_COOL_CLASSES | ICC_BAR_CLASSES;
-    InitCommonControlsEx(&icex);
-    
-    // if there is no CCS_NOPARENTALIGN, there is space of some pixels after rebar (Incorrect GetWindowRect ?)
-
-    _headerReBar.Attach(::CreateWindowEx(WS_EX_TOOLWINDOW,
-      REBARCLASSNAME,
-      NULL, WS_VISIBLE | WS_BORDER | WS_CHILD |
-      WS_CLIPCHILDREN | WS_CLIPSIBLINGS
-      | CCS_NODIVIDER
-      | CCS_NOPARENTALIGN
-      | CCS_TOP
-      | RBS_VARHEIGHT
-      | RBS_BANDBORDERS
-      ,0,0,0,0, *this, NULL, g_hInstance, NULL));
-  }
-
-  DWORD toolbarStyle =  WS_CHILD | WS_VISIBLE ;
+  // Keep the editable native path/history without the legacy draggable rebar.
+  DWORD toolbarStyle = WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS
+      | CCS_NODIVIDER | CCS_NORESIZE | CCS_NOPARENTALIGN;
   if (_headerReBar)
   {
     toolbarStyle |= 0
@@ -491,6 +480,8 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
       IDB_VIEW_SMALL_COLOR,
       (LPCTBBUTTON)&tbb, Z7_ARRAY_SIZE(tbb),
       0, 0, 0, 0, sizeof (TBBUTTON)));
+  ::SendMessage(_headerToolBar, TB_SETBUTTONSIZE, 0,
+      MAKELPARAM(NArkvello::Scale(*this,40), NArkvello::Scale(*this,36)));
 
   #ifndef UNDER_CE
   // Load ComboBoxEx class
@@ -578,7 +569,7 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
   _statusBar.Create(WS_CHILD | WS_VISIBLE, L"Status", (*this), _statusBarID);
   // _statusBar2.Create(WS_CHILD | WS_VISIBLE, L"Status", (*this), _statusBarID + 1);
 
-  const int sizes[] = {220, 320, 420, -1};
+  const int sizes[] = {NArkvello::Scale(*this,220), NArkvello::Scale(*this,320), NArkvello::Scale(*this,420), -1};
   _statusBar.SetParts(4, sizes);
   // _statusBar2.SetParts(5, sizes);
 
@@ -592,6 +583,7 @@ bool CPanel::OnCreate(CREATESTRUCT * /* createStruct */)
 
   // InitListCtrl();
   RefreshListCtrl();
+  NArkvello::Apply(*this);
   
   return true;
 }
@@ -606,39 +598,16 @@ void CPanel::ChangeWindowSize(int xSize, int ySize)
 {
   if (!(HWND)*this)
     return;
-  int kHeaderSize;
-  int kStatusBarSize;
-  // int kStatusBar2Size;
-  RECT rect;
-  if (_headerReBar)
-    _headerReBar.GetWindowRect(&rect);
-  else
-    _headerToolBar.GetWindowRect(&rect);
-
-  kHeaderSize = RECT_SIZE_Y(rect);
-
-  _statusBar.GetWindowRect(&rect);
-  kStatusBarSize = RECT_SIZE_Y(rect);
-  
-  // _statusBar2.GetWindowRect(&rect);
-  // kStatusBar2Size = RECT_SIZE_Y(rect);
- 
-  int yListViewSize = MyMax(ySize - kHeaderSize - kStatusBarSize, 0);
-  const int kStartXPos = 32;
-  if (_headerReBar)
-  {
-  }
-  else
-  {
-    _headerToolBar.Move(0, 0, xSize, 0);
-    _headerComboBox.Move(kStartXPos, 2,
-        MyMax(xSize - kStartXPos - 10, kStartXPos), 0);
-  }
-  _listView.Move(0, kHeaderSize, xSize, yListViewSize);
-  _statusBar.Move(0, kHeaderSize + yListViewSize, xSize, kStatusBarSize);
-  // _statusBar2.MoveWindow(0, kHeaderSize + yListViewSize + kStatusBarSize, xSize, kStatusBar2Size);
-  // _statusBar.MoveWindow(0, 100, xSize, kStatusBarSize);
-  // _statusBar2.MoveWindow(0, 200, xSize, kStatusBar2Size);
+  const int pathHeight = NArkvello::Scale(*this,48);
+  const int statusHeight = NArkvello::Scale(*this,26);
+  const int upWidth = NArkvello::Scale(*this,40);
+  const int inset = NArkvello::Scale(*this,8);
+  _headerToolBar.Move(inset, NArkvello::Scale(*this,6), upWidth, NArkvello::Scale(*this,36));
+  _headerComboBox.Move(upWidth + 2 * inset, NArkvello::Scale(*this,7),
+      MyMax(0, xSize - upWidth - 3 * inset), NArkvello::Scale(*this,620));
+  const int listHeight = MyMax(0, ySize - pathHeight - statusHeight);
+  _listView.Move(0, pathHeight, xSize, listHeight);
+  _statusBar.Move(0, pathHeight + listHeight, xSize, statusHeight);
 }
 
 bool CPanel::OnSize(WPARAM /* wParam */, int xSize, int ySize)

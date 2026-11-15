@@ -21,7 +21,7 @@ around them. Rust, C#, WinUI 3 and a replacement frontend are not selected.
   displace useful rows or conceal controls behind a simplified workflow.
 - Design for light, dark and system themes, display scaling, keyboard use,
   contrast themes, long filenames and translated labels. Detailed visual rules
-  belong to stage 3; these capabilities are not implemented yet.
+  belong to [DESIGN.md](DESIGN.md); native coverage is recorded per surface.
 - Treat Windows-owned dialogs and shell extensions as integration surfaces;
   their exact rendering is not fully controlled by this application.
 
@@ -47,5 +47,8 @@ complete manual regression pass.
 Stage 2 records the [UI source map](docs/UI-MAP.md) and
 [behavior checks](docs/UI-REGRESSION.md). Stage 3 defines the
 [Windows visual system](DESIGN.md) and [interface studies](design/preview/README.md).
-The native executables still have the original appearance. The next step is a
-working Win32 prototype of the main window and Add to Archive dialog.
+Stage 4 implements the main window, Add to Archive and nested Options as a
+working Win32 prototype. The shared presentation adapter reads Windows app
+theme and personalization accent through UISettings, with contrast-theme
+priority. See [native evidence and remaining checks](docs/NATIVE-PROTOTYPE.md).
+Other dialogs, full DPI/accessibility validation and release packaging remain.

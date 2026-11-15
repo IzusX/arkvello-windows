@@ -1,6 +1,7 @@
 // CompressDialog.cpp
 
 #include "StdAfx.h"
+#include "../FileManager/ArkvelloTheme.h"
 
 #include "../../../../C/CpuArch.h"
 
@@ -547,6 +548,8 @@ bool CCompressDialog::OnInit()
   // OnButtonSFX();
 
   NormalizePosition();
+  NArkvello::Attach(*this);
+  NArkvello::LayoutCompressDialog(*this);
 
   return CModalDialog::OnInit();
 }
@@ -3757,6 +3760,8 @@ bool COptionsDialog::OnInit()
   SetPrec();
 
   NormalizePosition();
+  NArkvello::Attach(*this);
+  NArkvello::LayoutCompressOptions(*this);
 
   return CModalDialog::OnInit();
 }
