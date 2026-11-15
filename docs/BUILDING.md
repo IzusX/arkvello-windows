@@ -73,3 +73,8 @@ is not claimed. ARM64 and installer builds are outside this first milestone.
 - GUI interaction has not been verified: the desktop automation runtime failed
   to initialize (`failed to write kernel assets`, OS error 3). Manual window,
   navigation and dialog checks remain to be performed.
+
+Subsequently, the user confirmed that `7zFM.exe` launches and looks identical
+to the original file manager. This closes the startup/appearance baseline
+check only. Navigation, dialogs and full GUI behavior remain unverified; use
+the [UI regression checklist](UI-REGRESSION.md) to record further coverage.
