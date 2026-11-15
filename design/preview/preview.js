@@ -3,6 +3,11 @@ const $ = selector => document.querySelector(selector);
 const query = new URLSearchParams(location.search);
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 const feedback = message => { $('#feedback').textContent = message; };
+function fitStudy() {
+  const top = $('#stage').getBoundingClientRect().top + scrollY;
+  document.documentElement.style.setProperty('--available-height', `${Math.max(160, innerHeight - top - 12)}px`);
+}
+window.addEventListener('resize', fitStudy);
 
 const files = [
   ['..', '', '', '', 'folder'],
@@ -28,12 +33,13 @@ function showSurface(surface) {
   $('#manager').hidden = surface !== 'main';
   $('#archive').hidden = surface !== 'archive';
   $('#dialog-state-control').hidden = surface !== 'archive';
+  fitStudy();
 }
 function makePanel(number) {
   const panel = document.createElement('section');
   panel.className = `panel${number ? ' inactive' : ''}`;
   panel.setAttribute('aria-label', number ? 'Правая панель' : 'Левая панель');
-  panel.innerHTML = `<div class="pathbar"><button type="button" aria-label="На уровень вверх"><svg><use href="#up"/></svg></button><input aria-label="Путь ${number ? 'правой' : 'левой'} панели" spellcheck="false" list="history-${number}"><datalist id="history-${number}"><option value="C:\\Users\\Alex\\Projects\\Arkvello\\"><option value="D:\\Backups\\"></datalist></div><div class="file-scroll"><table class="file-table" aria-label="Пример списка файлов"><colgroup><col class="name"><col class="size"><col class="date"><col class="kind"></colgroup><thead><tr><th scope="col" aria-sort="ascending">Имя<span class="sort" aria-hidden="true"></span></th><th scope="col" class="number">Размер</th><th scope="col">Изменён</th><th scope="col">Тип</th></tr></thead><tbody></tbody></table></div><div class="panel-status"><span class="count"></span><span class="selection"></span></div>`;
+  panel.innerHTML = `<div class="pathbar"><button type="button" aria-label="На уровень вверх"><svg><use href="#up"/></svg></button><div class="path-field"><svg aria-hidden="true"><use href="#location"/></svg><input aria-label="Путь ${number ? 'правой' : 'левой'} панели" spellcheck="false" list="history-${number}"><datalist id="history-${number}"><option value="C:\\Users\\Alex\\Projects\\Arkvello\\"><option value="D:\\Backups\\"></datalist></div></div><div class="file-scroll"><table class="file-table" aria-label="Пример списка файлов"><colgroup><col class="name"><col class="size"><col class="date"><col class="kind"></colgroup><thead><tr><th scope="col" aria-sort="ascending">Имя<span class="sort" aria-hidden="true"></span></th><th scope="col" class="number">Размер</th><th scope="col">Изменён</th><th scope="col">Тип</th></tr></thead><tbody></tbody></table></div><div class="panel-status"><span class="count"></span><span class="selection"></span></div>`;
   panel.querySelector('.pathbar input').value = number ? 'D:\\Backups\\' : 'C:\\Users\\Alex\\Projects\\Arkvello\\';
   let data = number ? backupFiles : files;
   if ($('#list-state').value === 'empty') data = [files[0]];

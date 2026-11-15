@@ -9,6 +9,13 @@ come from [PRODUCT.md](PRODUCT.md), control ownership from
 
 ## Direction
 
+Primary visual reference: the user's Windows 11 File Explorer screenshot,
+reviewed 2026-11-15. Match its surface hierarchy, neutral row selection,
+horizontal command treatment and softly filled address field. The screenshot
+is a visual reference, not a request for Explorer tabs, sidebar or search.
+Colors below are authored approximations, not extracted OS theme constants;
+the navigation tint is deliberately subtle and has a solid-color fallback.
+
 Native Windows 11, compact desktop utility. The user's familiar 7zFM layout is
 the composition: menu, grouped commands, editable panel paths, dense lists,
 panel status; the archive dialog keeps its two-column form and visible advanced
@@ -31,18 +38,22 @@ default.
 - Prefer Segoe UI Variable Text where the renderer supports it; Segoe UI is the
   GDI fallback. Do not bundle Microsoft fonts. Preserve Windows font fallback
   for Cyrillic, CJK and other scripts.
-- Primary UI, file rows and form labels: 13 DIP regular, 18 DIP line box.
+- Primary UI, file rows and form labels: 14 DIP regular, 20 DIP line box.
   Secondary status text: 12/16. Group headings: 14/20 semibold. Native caption
   text remains system-owned. No all-caps labels or decorative tracking.
 - Base spacing: 4; related controls 8; group separation 16; dialog inset 20.
 - Main window study: 1180 x 740; initial useful target 960 x 640. These do not
   replace existing saved geometry or impose a new main-window minimum yet.
-- Main menu 28 high; command band 60; path band 36; list header 28; details row
-  22; status 26. Native caption height is system-derived, illustrated at 32.
-- Toolbar normal commands: 76 wide, 52 high, 20 DIP command glyph above 12 DIP
-  label; preserve existing large/small/text visibility options. Large-button
+- Main menu 28 high with 13 DIP text; command band 52; path band 48; list header
+  32; details row 28; status 26. Native caption height is system-derived,
+  illustrated at 32. Keep upstream density options available in production.
+- Toolbar normal commands: 36 high, 20 DIP command glyph beside a 14 DIP label,
+  9 DIP icon/text gap and 10 DIP horizontal padding; preserve existing
+  large/small/text visibility options. Large-button
   mode must use a scaled icon source, not stretch the small bitmap.
-- Paths, inputs, combos and dialog buttons: 28 high; labels have at least 4 DIP
+- Address fields: 34 high, softly filled, 5 DIP corners; outline the whole field
+  on focus. Retain directly editable paths and history. Other inputs, combos
+  and dialog buttons: 28 high; labels have at least 4 DIP
   clearance. Check target row 26 high, glyph 16. Button minimum width 88; browse
   button 32. Text can expand widths; labels may wrap without overlap.
 - Control corners 4; outer window corners belong to Windows. No rounded file
@@ -56,7 +67,7 @@ default.
 
 Microsoft's [Windows typography guidance](https://learn.microsoft.com/en-us/windows/apps/design/signature-experiences/typography)
 identifies Segoe UI Variable and a 12 DIP regular minimum. The slightly denser
-13 DIP body here is deliberate for this file manager; do not substitute the
+14 DIP body here is deliberate for this file manager; do not substitute the
 large typography of a touch-first settings application.
 
 ## Palette and theme resolution
@@ -65,16 +76,20 @@ The preview's [CSS tokens](design/preview/style.css) are the visual reference.
 The native prototype must resolve the same semantic roles for both `7zFM.exe`
 and `7zG.exe`, rather than introduce independent palettes.
 
-- **Light**: frame `#F3F3F3`, panel/input `#FFFFFF`, raised/hover `#EAEAEA`,
+- **Light**: frame `#F3F3F3`, navigation/caption `#F0F2F5`, address `#E5E8ED`
+  (hover `#DCE0E6`), panel/input `#FFFFFF`, raised/hover `#EAEAEA`,
   pressed `#DFDFDF`, divider `#D5D5D5`, control edge `#8A8A8A`, text `#1A1A1A`,
   secondary `#5C5C5C`, disabled `#6D6D6D`, accent `#005FB8`, accent text
-  `#FFFFFF`, focused selection `#DCEBFA`, selection text `#1A1A1A`, inactive
-  selection `#E5E5E5`, error `#B42318`, error surface `#FFF1EF`.
-- **Dark**: frame `#202020`, panel/input `#272727`, raised/hover `#333333`,
-  pressed `#3D3D3D`, divider `#454545`, control edge `#969696`, text `#F3F3F3`,
+  `#FFFFFF`, focused selection `#E5E5E5`, selection text `#1A1A1A`, inactive
+  selection `#EEEEEE`, current-item outline `#666666`, error `#B42318`, error
+  surface `#FFF1EF`.
+- **Dark**: frame `#202020`, navigation/caption `#1C202C`, address `#292D39`
+  (hover `#333846`), panel/input `#191919`, raised/hover `#2D2D2D`,
+  pressed `#3D3D3D`, divider `#383838`, control edge `#969696`, text `#F3F3F3`,
   secondary `#C0C0C0`, disabled `#A0A0A0`, accent `#75BFFF`, accent text
-  `#101010`, focused selection `#243F58`, selection text `#F3F3F3`, inactive
-  selection `#3A3A3A`, error `#FFB4AB`, error surface `#452521`.
+  `#101010`, focused selection `#414141`, selection text `#F3F3F3`, inactive
+  selection `#303030`, current-item outline `#B0B0B0`, error `#FFB4AB`, error
+  surface `#452521`.
 - **System** is the initial preference: resolve Windows application light/dark
   preference, listen for changes, repaint existing windows, descendants and
   open popups. An explicit app theme overrides application light/dark only.
@@ -86,7 +101,7 @@ and `7zG.exe`, rather than introduce independent palettes.
   is optional later, provided contrasting foregrounds and selected rows remain
   correct. No arbitrary OS accent is accepted without contrast checks.
 
-Use color for selected items, focus and the default dialog action. Toolbar
+Use neutral fills for selected items, accent for focus and the default action. Toolbar
 commands stay neutral, including Delete; destructive confirmation retains its
 original behavior. Avoid pure red selection fills. Alternative selection mode
 must retain its separate marked-items/current-item semantics with a selection
@@ -105,7 +120,8 @@ controls do not acquire these colors automatically by following WinUI advice.
 - **Pressed**: deeper neutral surface. Default action remains identifiable when
   another control owns focus; default and keyboard focus are different states.
 - **Keyboard focus**: 2 DIP high-contrast outline, inset/offset so it is not
-  clipped. Edits also have a 2 DIP accent bottom rule. Keep native caret,
+  clipped. Dialog edits also have a 2 DIP accent bottom rule; the address field
+  uses a surrounding focus outline instead. Keep native caret,
   selection, default-button behavior and visible keyboard cues.
 - **Selected list item**: rectangular fill across the user's configured full-row
   or item selection extent. Current/focused item has a distinct outline. An
@@ -176,7 +192,9 @@ original flag, enabled state, keyboard ordering and tri-state behavior if used.
 
 ## Icons, interaction and motion
 
-Use a consistent 20 DIP line-icon grid, 1.5 DIP stroke with optical alignment.
+Use a consistent 20 DIP line-icon grid, 1.25 DIP command strokes (1.5 for
+navigation) with optical alignment. Sample folder icons use a restrained gold
+fill and 1 DIP outline, instead of the previous outline-only placeholders.
 The study contains original SVG geometry for the seven commands and navigation;
 these are design references, not replacement product-logo assets. Production
 may render vector geometry or approved multi-resolution assets; keep shell
