@@ -62,3 +62,14 @@ GitHub Actions (`Windows x64`) runs the same build and smoke scripts on
 artifacts, not a product release. The runner image and installed toolset can
 change: the build is repeatable from source, but byte-for-byte reproducibility
 is not claimed. ARM64 and installer builds are outside this first milestone.
+
+## Initial baseline verification (2026-11-15)
+
+- Local: Visual Studio Build Tools 2026 18.10.2, MSVC 14.51.36231,
+  Windows SDK 10.0.26100.0. All four components built successfully.
+- Local smoke tests passed under Windows PowerShell 5.1.
+- [Windows CI run](https://github.com/IzusX/arkvello-windows/actions/runs/43712956783):
+  all four components built and all archive smoke tests passed on `windows-2022`.
+- GUI interaction has not been verified: the desktop automation runtime failed
+  to initialize (`failed to write kernel assets`, OS error 3). Manual window,
+  navigation and dialog checks remain to be performed.
