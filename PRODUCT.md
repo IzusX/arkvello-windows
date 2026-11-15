@@ -45,6 +45,7 @@ the original 7zFM. This confirms startup and the unchanged appearance, not a
 complete manual regression pass.
 
 Stage 2 records the [UI source map](docs/UI-MAP.md) and
-[behavior checks](docs/UI-REGRESSION.md). No visual redesign is included in this
-stage. The next step is to define the visual system, followed by a working
-prototype of the main window and Add to Archive dialog.
+[behavior checks](docs/UI-REGRESSION.md). Stage 3 defines the
+[Windows visual system](DESIGN.md) and [interface studies](design/preview/README.md).
+The native executables still have the original appearance. The next step is a
+working Win32 prototype of the main window and Add to Archive dialog.

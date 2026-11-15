@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Arkvello — исследование интерфейса Windows</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="study-controls">
+    <strong>Arkvello <span>Windows · этап 3</span></strong>
+    <label>Окно <select id="surface"><option value="main">Файловый менеджер</option><option value="archive">Добавить к архиву</option></select></label>
+    <label>Тема <select id="theme"><option value="system">Системная</option><option value="light">Светлая</option><option value="dark">Тёмная</option><option value="contrast">Контрастная (пример)</option></select></label>
+    <label>Масштаб <select id="scale"><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
+    <label class="check"><input id="two-panels" type="checkbox">Две панели</label>
+    <label>Список <select id="list-state"><option value="normal">Обычный</option><option value="long">Длинные имена</option><option value="empty">Пустая папка</option></select></label>
+    <label id="dialog-state-control" hidden>Диалог <select id="dialog-state"><option value="normal">Без ошибки</option><option value="password-error">Ошибка пароля (пример)</option></select></label>
+  </header>
+  <p class="study-note">Визуальный макет, не сборка программы. Файлы, значения и оценки памяти — примеры. Операции с диском не выполняются. F9 — две панели.</p>
+  <main id="stage">
+    <section class="window manager" id="manager" aria-label="Макет файлового менеджера">
+      <div class="caption"><span class="app-mark" aria-hidden="true"></span><span>Arkvello</span><div class="caption-actions" aria-hidden="true"><svg><use href="#minimize"/></svg><svg><use href="#maximize"/></svg><svg><use href="#close"/></svg></div></div>
+      <nav class="menubar" aria-label="Главное меню макета">
+        <button type="button">Файл</button><button type="button">Правка</button><button type="button">Вид</button><button type="button">Избранное</button><button type="button">Сервис</button><button type="button">Справка</button>
+      </nav>
+      <div class="commands" aria-label="Основные команды">
+        <button type="button" id="add"><svg><use href="#add-icon"/></svg><span>Добавить</span></button>
+        <button type="button" data-command="Извлечь"><svg><use href="#extract"/></svg><span>Извлечь</span></button>
+        <button type="button" data-command="Тестировать"><svg><use href="#test"/></svg><span>Тестировать</span></button>
+        <span class="command-divider"></span>
+        <button type="button" data-command="Копировать"><svg><use href="#copy"/></svg><span>Копировать</span></button>
+        <button type="button" data-command="Переместить"><svg><use href="#move"/></svg><span>Переместить</span></button>
+        <button type="button" data-command="Удалить"><svg><use href="#delete"/></svg><span>Удалить</span></button>
+        <button type="button" data-command="Информация"><svg><use href="#info"/></svg><span>Информация</span></button>
+      </div>
+      <div class="panels" id="panels"></div>
+    </section>
+
+    <section class="window archive" id="archive" hidden aria-label="Макет окна добавления к архиву">
+      <div class="caption"><span>Добавить к архиву</span><div class="caption-actions" aria-hidden="true"><svg><use href="#close"/></svg></div></div>
+      <form id="archive-form">
+        <div class="archive-content">
+          <label class="archive-path" for="archive-name">Архив:</label>
+          <div class="path-input"><input id="archive-name" value="C:\Users\Alex\Projects\Arkvello\release.7z" spellcheck="false"><button type="button" data-command="Выбор пути архива" aria-label="Выбрать путь архива">…</button></div>
+          <div class="archive-columns">
+            <div>
+              <h2>Сжатие</h2>
+              <div class="form-row"><label for="format">Формат архива:</label><select id="format"><option>7z</option><option>zip</option><option>tar</option></select></div>
+              <div class="form-row"><label for="level">Уровень сжатия:</label><select id="level"><option>5 — Нормальный</option><option>0 — Без сжатия</option><option>9 — Ультра</option></select></div>
+              <div class="form-row"><label for="method">Метод сжатия:</label><select id="method"><option>LZMA2</option><option>LZMA</option></select></div>
+              <div class="form-row"><label for="dictionary">Размер словаря:</label><select id="dictionary"><option>32 МБ</option><option>64 МБ</option></select></div>
+              <div class="form-row"><label for="word">Размер слова:</label><select id="word"><option>32</option><option>64</option></select></div>
+              <div class="form-row"><label for="solid">Размер блока:</label><select id="solid"><option>Непрерывный</option><option>Без непрерывного блока</option></select></div>
+              <div class="form-row"><label for="threads">Потоков CPU:</label><div class="thread-field"><select id="threads"><option>8</option><option>4</option><option>2</option></select><span class="secondary">/ 16</span></div></div>
+              <div class="memory"><div><span>Память для сжатия:</span><span>386 МБ</span></div><div><label for="memory-limit">Ограничение:</label><select id="memory-limit"><option>80%</option><option>50%</option></select></div><div><span>Для распаковки:</span><span>34 МБ</span></div></div>
+              <label class="stacked" for="volumes">Разбить на тома размером, байт:</label><input id="volumes" placeholder="Не разбивать" list="volume-presets"><datalist id="volume-presets"><option value="10M"><option value="100M"><option value="1G"></datalist>
+              <label class="stacked" for="parameters">Параметры:</label><input id="parameters" spellcheck="false">
+              <div class="options-row"><button type="button" id="options-open">Параметры…</button><span class="secondary">NTFS и временные метки</span></div>
+            </div>
+            <div>
+              <h2>Обновление</h2>
+              <div class="form-row"><label for="update-mode">Режим обновления:</label><select id="update-mode"><option>Добавить и заменить</option><option>Обновить и добавить</option><option>Обновить существующие</option><option>Синхронизировать</option></select></div>
+              <div class="form-row"><label for="path-mode">Режим путей:</label><select id="path-mode"><option>Относительные пути</option><option>Полные пути</option><option>Абсолютные пути</option></select></div>
+              <fieldset class="archive-flags"><legend class="sr-only">Параметры архивации</legend>
+                <label class="check"><input type="checkbox" disabled>Создать SFX-архив</label>
+                <label class="check"><input type="checkbox">Сжимать открытые для записи файлы</label>
+                <label class="check"><input type="checkbox">Удалять файлы после сжатия</label>
+              </fieldset>
+              <h2 class="encryption-heading">Шифрование</h2>
+              <label class="stacked" for="password">Введите пароль:</label><input id="password" type="password" autocomplete="off">
+              <label class="stacked" for="password-again">Повторите пароль:</label><input id="password-again" type="password" autocomplete="off">
+              <p id="password-error" class="field-error" hidden>Пароли не совпадают.</p>
+              <label class="check password-show"><input id="show-password" type="checkbox">Показать пароль</label>
+              <div class="form-row"><label for="encryption">Метод шифрования:</label><select id="encryption"><option>AES-256</option></select></div>
+              <label class="check"><input type="checkbox">Шифровать имена файлов</label>
+            </div>
+          </div>
+        </div>
+        <footer class="dialog-footer"><button class="primary" type="submit">OK</button><button type="button" id="archive-cancel">Отмена</button><button type="button" data-command="Справка">Справка</button></footer>
+      </form>
+    </section>
+  </main>
+  <p id="feedback" class="feedback" role="status">Выберите окно и тему. Кнопка «Добавить» открывает макет диалога.</p>
+
+  <dialog id="options-dialog" aria-labelledby="options-title">
+    <div class="caption"><span id="options-title">Параметры</span></div>
+    <form method="dialog">
+      <div class="options-content">
+        <h2>NTFS</h2>
+        <label class="check"><input type="checkbox">Сохранять символические ссылки</label>
+        <label class="check"><input type="checkbox">Сохранять жёсткие ссылки</label>
+        <label class="check"><input type="checkbox">Сохранять альтернативные потоки</label>
+        <label class="check"><input type="checkbox">Сохранять права доступа</label>
+        <h2 class="time-heading">Временные метки</h2>
+        <p class="secondary option-hint">Флажок слева задаёт явное переопределение параметра.</p>
+        <div class="override-row"><input type="checkbox" aria-label="Переопределить точность времени" data-override="precision"><label for="precision">Точность времени:</label><select id="precision" disabled><option>По умолчанию</option><option>1 нс</option></select></div>
+        <div class="override-row"><input type="checkbox" aria-label="Переопределить время изменения" data-override="mtime"><label class="check"><input id="mtime" type="checkbox" checked disabled>Сохранять время изменения</label></div>
+        <div class="override-row"><input type="checkbox" aria-label="Переопределить время создания" data-override="ctime"><label class="check"><input id="ctime" type="checkbox" disabled>Сохранять время создания</label></div>
+        <div class="override-row"><input type="checkbox" aria-label="Переопределить время доступа" data-override="atime"><label class="check"><input id="atime" type="checkbox" disabled>Сохранять время доступа</label></div>
+        <div class="override-row"><input type="checkbox" aria-label="Переопределить время архива" data-override="ztime"><label class="check"><input id="ztime" type="checkbox" disabled>Время архива — по последнему файлу</label></div>
+        <label class="check preserve-time"><input type="checkbox">Не изменять время доступа исходных файлов</label>
+      </div>
+      <footer class="dialog-footer"><button class="primary" value="ok">OK</button><button value="cancel">Отмена</button><button type="button" data-command="Справка по параметрам">Справка</button></footer>
+    </form>
+  </dialog>
+
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="add-icon" viewBox="0 0 20 20"><path d="M3 7h14v10H3zM2 3h16v4H2zM10 9v6M7 12h6"/></symbol>
+    <symbol id="extract" viewBox="0 0 20 20"><path d="M3 12v5h14v-5M10 2v11M6 9l4 4 4-4"/></symbol>
+    <symbol id="test" viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-7 8-7 8s-7-4-7-8V5zM6 10l3 3 5-6"/></symbol>
+    <symbol id="copy" viewBox="0 0 20 20"><path d="M7 7h10v11H7zM4 14H2V2h11v2"/></symbol>
+    <symbol id="move" viewBox="0 0 20 20"><path d="M3 11V3h9M8 8h9v9H8zM2 17l6-6M4 11h4v4"/></symbol>
+    <symbol id="delete" viewBox="0 0 20 20"><path d="M3 5h14M7 5V2h6v3M5 5l1 13h8l1-13M8 8v7M12 8v7"/></symbol>
+    <symbol id="info" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/><path d="M10 9v6M10 5v1"/></symbol>
+    <symbol id="up" viewBox="0 0 20 20"><path d="M10 17V3M5 8l5-5 5 5"/></symbol>
+    <symbol id="folder" viewBox="0 0 20 20"><path d="M2 5h6l2 2h8v10H2zM2 5V3h6l2 2h7v2"/></symbol>
+    <symbol id="file" viewBox="0 0 20 20"><path d="M4 2h8l4 4v12H4zM12 2v5h4"/></symbol>
+    <symbol id="minimize" viewBox="0 0 20 20"><path d="M5 10h10"/></symbol>
+    <symbol id="maximize" viewBox="0 0 20 20"><path d="M5 5h10v10H5z"/></symbol>
+    <symbol id="close" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></symbol>
+  </svg>
+  <script src="preview.js"></script>
+</body>
+</html>
