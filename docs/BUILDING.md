@@ -78,3 +78,14 @@ Subsequently, the user confirmed that `7zFM.exe` launches and looks identical
 to the original file manager. This closes the startup/appearance baseline
 check only. Navigation, dialogs and full GUI behavior remain unverified; use
 the [UI regression checklist](UI-REGRESSION.md) to record further coverage.
+
+## Native prototype checks (stage 4)
+
+The main window, Add to Archive and nested Options now have an Arkvello
+presentation adapter. Run `scripts\build-native-ui-test.cmd` followed by
+`scripts\test-native-ui.ps1` for private-desktop GUI integration checks and
+GUI-created 7z/ZIP round trips. GitHub Actions runs these in addition to the
+CLI/DLL smoke suite and uploads native evidence separately. See
+[native prototype coverage and limitations](NATIVE-PROTOTYPE.md), especially
+the distinction between message-based checks and manual DPI/accessibility
+validation. Original system-DPI-aware manifests are retained.

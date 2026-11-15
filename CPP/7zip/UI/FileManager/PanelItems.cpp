@@ -1,6 +1,7 @@
 // PanelItems.cpp
 
 #include "StdAfx.h"
+#include "ArkvelloTheme.h"
 
 #include "../../../../C/Sort.h"
 
@@ -45,7 +46,10 @@ static unsigned GetColumnWidth(PROPID propID, VARTYPE /* varType */)
 {
   switch (propID)
   {
-    case kpidName: return 160;
+    case kpidName: return 320;
+    case kpidCTime:
+    case kpidATime:
+    case kpidMTime: return 160;
   }
   return 100;
 }
@@ -153,7 +157,7 @@ HRESULT CPanel::InitColumns()
       prop.Name = GetNameOfProperty(propID, name);
       prop.Order = -1;
       prop.IsVisible = GetColumnVisible(propID, isFsFolder);
-      prop.Width = GetColumnWidth(propID, varType);
+      prop.Width = (unsigned)NArkvello::Scale(*this, (int)GetColumnWidth(propID, varType));
       prop.IsRawProp = false;
       _columns.Add(prop);
     }
@@ -192,7 +196,7 @@ HRESULT CPanel::InitColumns()
       prop.Name = GetNameOfProperty(propID, name);
       prop.Order = -1;
       prop.IsVisible = GetColumnVisible(propID, isFsFolder);
-      prop.Width = GetColumnWidth(propID, VT_BSTR);
+      prop.Width = (unsigned)NArkvello::Scale(*this, (int)GetColumnWidth(propID, VT_BSTR));
       prop.IsRawProp = true;
       _columns.Add(prop);
     }

@@ -1,6 +1,7 @@
 // MyLoadMenu.cpp
 
 #include "StdAfx.h"
+#include "ArkvelloTheme.h"
 
 #include "../../../Windows/FileDir.h"
 #include "../../../Windows/Menu.h"
@@ -380,6 +381,7 @@ void MyLoadMenu(bool needResetMenu)
     g_FileMenu.CreatePopup();
     CopyMenu(::GetSubMenu(baseMenu, k_MenuIndex_File), g_FileMenu);
   }
+  NArkvello::StyleMenu(g_HWND);
 }
 
 void OnMenuActivating(HWND /* hWnd */, HMENU hMenu, int position)

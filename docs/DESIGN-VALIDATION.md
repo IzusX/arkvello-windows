@@ -3,6 +3,10 @@
 2026-11-15, revised against the user's File Explorer reference. Applies to [DESIGN.md](../DESIGN.md) and the
 [HTML studies](../design/preview/index.html), not the Win32 binaries.
 
+Stage 4 native implementation and its separate evidence are recorded in
+[NATIVE-PROTOTYPE.md](NATIVE-PROTOTYPE.md). The HTML checks below do not establish
+native DPI, keyboard or assistive-technology coverage.
+
 ## Performed
 
 Rendered the real local HTML with installed Microsoft Edge

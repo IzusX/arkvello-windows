@@ -4,13 +4,14 @@ CFLAGS = $(CFLAGS) \
 !IFDEF UNDER_CE
 LIBS = $(LIBS) ceshell.lib Commctrl.lib
 !ELSE
-LIBS = $(LIBS) comctl32.lib htmlhelp.lib comdlg32.lib Mpr.lib Gdi32.lib
+LIBS = $(LIBS) comctl32.lib htmlhelp.lib comdlg32.lib Mpr.lib Gdi32.lib dwmapi.lib uxtheme.lib runtimeobject.lib
 CFLAGS = $(CFLAGS) -DZ7_DEVICE_FILE
 LFLAGS = $(LFLAGS) /DELAYLOAD:mpr.dll
 LIBS = $(LIBS) delayimp.lib
 !ENDIF
 
 FM_OBJS = \
+  $O\ArkvelloTheme.obj \
   $O\App.obj \
   $O\BrowseDialog.obj \
   $O\BrowseDialog2.obj \

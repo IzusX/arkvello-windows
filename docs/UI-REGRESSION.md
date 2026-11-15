@@ -205,6 +205,10 @@ original baseline. Capture baseline observations before changing these surfaces.
 
 ## Acceptance at the stage 4 checkpoint
 
+The 2026-11-16 [native prototype record](NATIVE-PROTOTYPE.md) lists partial
+automated evidence against every P0 group and the unperformed manual subcases.
+Checklist cases are not promoted to complete on message-based evidence alone.
+
 All P0 cases must have recorded outcomes. Failures and unavailable environment/
 packaging subcases must be listed explicitly; blocked coverage cannot be
 reported as passed. Decide whether the observed presentation limitations are

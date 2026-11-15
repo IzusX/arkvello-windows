@@ -2,9 +2,9 @@
 
 A fork of the official [7-Zip](https://www.7-zip.org/) File Manager, intended to
 preserve its functionality and familiar workflow while modernizing the interface
-for Windows 11. The original Win32 build and UI inventory are established.
-The visual system and interface studies are ready; native visual changes have
-not been implemented yet.
+for Windows 11. The Win32 prototype now styles the main window, Add to Archive
+and its nested Options dialog, with system/light/dark themes and a subtle tint
+from the Windows personalization accent. Other dialogs are still being migrated.
 
 This is the Windows project. [Arkvello for macOS](https://github.com/IzusX/arkvello)
 is developed in a separate repository.
@@ -16,6 +16,7 @@ is developed in a separate repository.
 - [Windows visual system](DESIGN.md)
 - [Interactive interface studies and captures](design/preview/README.md)
 - [Design validation and remaining native checks](docs/DESIGN-VALIDATION.md)
+- [Native prototype, evidence and remaining checks](docs/NATIVE-PROTOTYPE.md)
 - [Pinned upstream baseline and update policy](docs/UPSTREAM.md)
 - [Original source documentation](DOC/readme.txt)
 - [Original license and notices](DOC/License.txt)

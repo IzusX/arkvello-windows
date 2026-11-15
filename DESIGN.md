@@ -1,8 +1,10 @@
 # Arkvello Windows visual system
 
-Stage 3 design target, 2026-11-15. This specification and the
+Stage 3 design target, approved 2026-11-15; system-accent requirement added
+2026-11-16. This specification and the
 [interactive studies](design/preview/index.html) describe the next Win32
-prototype; they do not change the shipped executables. Product requirements
+prototype. Native implementation and its limits are tracked in
+[NATIVE-PROTOTYPE.md](docs/NATIVE-PROTOTYPE.md). Product requirements
 come from [PRODUCT.md](PRODUCT.md), control ownership from
 [UI-MAP.md](docs/UI-MAP.md), and acceptance scenarios from
 [UI-REGRESSION.md](docs/UI-REGRESSION.md).
@@ -15,6 +17,8 @@ horizontal command treatment and softly filled address field. The screenshot
 is a visual reference, not a request for Explorer tabs, sidebar or search.
 Colors below are authored approximations, not extracted OS theme constants;
 the navigation tint is deliberately subtle and has a solid-color fallback.
+The approved native behavior is to derive that tint from Windows personalization;
+the blue-gray preview is one example, not a permanently fixed product color.
 
 Native Windows 11, compact desktop utility. The user's familiar 7zFM layout is
 the composition: menu, grouped commands, editable panel paths, dense lists,
@@ -97,9 +101,16 @@ and `7zG.exe`, rather than introduce independent palettes.
   window, text, highlight, gray-text and focus colors; do not force the blue
   palette or bitmaps. The HTML's contrast selector is an illustrative palette;
   CSS forced-colors follows actual browser/system colors when active.
-- Prototype accent is the stable blue above. Reading the user's Windows accent
-  is optional later, provided contrasting foregrounds and selected rows remain
-  correct. No arbitrary OS accent is accepted without contrast checks.
+- Native accent follows Windows personalization through
+  `UISettings.GetColorValue(Accent)`. Blend 14% into the dark frame and 5% into
+  the light frame for navigation; address fields use a 12%/5% tint over their
+  neutral base. Selection stays neutral. Adapt focus/default-action accent
+  brightness until it contrasts at least 3:1 with the frame; choose black or
+  white action text by the higher contrast ratio. Windows contrast themes use
+  system colors exclusively. Refresh on system theme/color/settings messages.
+  If UISettings fails, use the documented DWM color API and a neutral/light
+  fallback; the sample blue is the last accent fallback. No global Windows
+  personalization settings are written by the application.
 
 Use neutral fills for selected items, accent for focus and the default action. Toolbar
 commands stay neutral, including Delete; destructive confirmation retains its
