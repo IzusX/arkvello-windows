@@ -1,9 +1,11 @@
 # Arkvello Windows visual system
 
-Stage 3 design target, approved 2026-11-15; system-accent requirement added
-2026-11-16. This specification and the
-[interactive studies](design/preview/index.html) describe the next Win32
-prototype. Native implementation and its limits are tracked in
+Stage 3 design target, approved 2026-11-15; system-accent requirement and
+composition freedom clarified 2026-11-16. This specification and the
+[interactive studies](design/preview/index.html) record the approved visual
+direction and the previous prototype composition. The layout-specific studies
+below are references for reassessment, not a fixed structure for the next UI.
+Native implementation and its limits are tracked in
 [NATIVE-PROTOTYPE.md](docs/NATIVE-PROTOTYPE.md). Product requirements
 come from [PRODUCT.md](PRODUCT.md), control ownership from
 [UI-MAP.md](docs/UI-MAP.md), and acceptance scenarios from
@@ -14,25 +16,38 @@ come from [PRODUCT.md](PRODUCT.md), control ownership from
 Primary visual reference: the user's Windows 11 File Explorer screenshot,
 reviewed 2026-11-15. Match its surface hierarchy, neutral row selection,
 horizontal command treatment and softly filled address field. The screenshot
-is a visual reference, not a request for Explorer tabs, sidebar or search.
-Colors below are authored approximations, not extracted OS theme constants;
-the navigation tint is deliberately subtle and has a solid-color fallback.
-The approved native behavior is to derive that tint from Windows personalization;
-the blue-gray preview is one example, not a permanently fixed product color.
+is a visual reference. Tabs, a sidebar, breadcrumbs and search may be considered
+in a revised design; none is required solely because Explorer includes it.
+Colors below are authored approximations, not extracted OS theme constants.
+On 2026-11-16 the user replaced manual personalization-accent tint with the
+Windows Mica material: menu and navigation share its wallpaper/theme-derived
+backdrop. The old blue-gray studies remain historical palette examples.
 
-Native Windows 11, compact desktop utility. The user's familiar 7zFM layout is
-the composition: menu, grouped commands, editable panel paths, dense lists,
-panel status; the archive dialog keeps its two-column form and visible advanced
-parameters. Modernization comes from consistent type, spacing, states, strokes
-and icons across both GUI processes. Do not add a navigation sidebar, command
-search, tabs, dashboard, oversized headings or hidden basic/advanced modes.
+Native Windows 11, compact desktop utility. Preserve all 7zFM capabilities and
+equivalent operation results while allowing a new composition. Command placement,
+navigation, panels and dialog grouping can change. The macOS example illustrates
+platform-native design freedom; do not copy its Finder composition into Windows
+as a requirement. Keep useful information density and all advanced parameters
+accessible. Design complete surfaces together; the implementation may reuse or
+replace existing UI without letting legacy control structure dictate the layout.
+Detailed new layouts and their implementation technology remain undecided.
+The [operation execution policy](PRODUCT.md#operation-execution-policy) allows
+CLI, direct interfaces and adapted upstream code behind consistent application
+behavior. Backend choice must not force a different visual language or omit
+commands. Further work follows the [proposed plan](docs/DEVELOPMENT-PLAN.md).
 
-Use solid neutral surfaces. Mica, acrylic and custom window chrome are not
-required to achieve this direction. Keep Windows caption buttons, snapping,
-system menu, resizing and window shadows under DWM control. Any title-bar tint
-is supplementary to a fully themed client area.
+Use Windows Mica Base for the common menu/navigation foundation, with native
+system fallback. Keep file content, scrollbar gutters and the lower command
+surface opaque and neutral. Keep Windows caption buttons, snapping, system
+menu, resizing and window shadows under DWM control; custom chrome is not needed.
 
 ## Typography and dimensions
+
+2026-11-16 icon choice: use the official Fluent System Icons Regular subset
+vendored under `src/Arkvello.WinUI/Assets/Fluent`, rendered as native vector
+geometry. Command/navigation and generic file/folder icons should not depend
+on Segoe Fluent Icons being installed. Preserve theme/disabled/contrast
+foreground inheritance. Windows-owned caption and control glyphs remain native.
 
 All measurements below are design units at 96 DPI (DIP), not fixed device
 pixels. Convert through the window DPI once; round shared edges consistently.
@@ -101,16 +116,15 @@ and `7zG.exe`, rather than introduce independent palettes.
   window, text, highlight, gray-text and focus colors; do not force the blue
   palette or bitmaps. The HTML's contrast selector is an illustrative palette;
   CSS forced-colors follows actual browser/system colors when active.
-- Native accent follows Windows personalization through
-  `UISettings.GetColorValue(Accent)`. Blend 14% into the dark frame and 5% into
-  the light frame for navigation; address fields use a 12%/5% tint over their
-  neutral base. Selection stays neutral. Adapt focus/default-action accent
-  brightness until it contrasts at least 3:1 with the frame; choose black or
-  white action text by the higher contrast ratio. Windows contrast themes use
-  system colors exclusively. Refresh on system theme/color/settings messages.
-  If UISettings fails, use the documented DWM color API and a neutral/light
-  fallback; the sample blue is the last accent fallback. No global Windows
-  personalization settings are written by the application.
+- Native menu/navigation use `Window.SystemBackdrop` with `MicaBackdrop`,
+  `Kind=Base`, visible through transparent container backgrounds. Address fill
+  uses the native neutral `ControlFillColorDefaultBrush`. Do not manually sample
+  wallpaper, mix the system accent into these surfaces, or make the whole window
+  translucent. Windows owns inactive/transparency-off/battery/unsupported-system
+  fallback and contrast behavior. The theme preference is applied to the window
+  content root so Mica and controls agree. Native control focus/default-action
+  accents remain; file selection stays neutral. No global Windows settings are
+  written. See Microsoft's [Mica guidance](https://learn.microsoft.com/en-us/windows/apps/design/style/mica).
 
 Use neutral fills for selected items, accent for focus and the default action. Toolbar
 commands stay neutral, including Delete; destructive confirmation retains its
@@ -158,6 +172,9 @@ does not establish Win32 accessibility.
 
 ## Main-window study
 
+This section records the approved stage 3 study. Its command coverage and
+interaction requirements remain relevant; its exact composition may be revised.
+
 Keep the native menu visible: File, Edit, View, Favorites, Tools, Help (localized
 as today). Keep the archive toolbar group Add / Extract / Test, followed by
 Copy / Move / Delete / Info. Preserve visibility and text options; no new
@@ -176,6 +193,10 @@ in production so file type, overlays and system associations remain accurate.
 The preview contains authored generic folder/file shapes as sample data only.
 
 ## Add to Archive study
+
+This section records the stage 3 form. Full parameter coverage, dependencies
+and value semantics remain requirements; column grouping, control IDs and
+dialog boundaries may change in a redesigned implementation.
 
 Keep the original archive path/history and browse button first. Preserve the
 two-column grouping and all fields: format, compression level/method,
@@ -213,8 +234,9 @@ file icons and overlays. Do not use font characters as command icons.
 
 No entrance choreography, animated selection, blur or row transitions. Feedback
 is immediate; optional hover color transitions stay <=100 ms and respect reduced
-motion. Preserve existing accelerator tables, keyboard handlers, mouse patterns,
-focus restoration, panel switching and native modal ownership. Review against
+motion. Preserve useful shortcuts, equivalent mouse operations, focus restoration,
+panel switching and correct modal ownership; existing event handlers and
+accelerator tables may be replaced. Review against
 the regression checklist rather than infer behavior from the HTML study.
 
 ## Scaling and implementation checkpoint
@@ -226,20 +248,25 @@ controls must remain reachable and footer actions visible. Do not declare
 per-monitor awareness before fonts, images, non-client area, list metrics,
 dialog geometry and popup placements respond correctly to DPI changes.
 
-Stage 4 will implement shared presentation services scoped to the two GUI apps,
-then the main window and Add dialog. Preserve original command IDs and business
-logic. Native menus, combo dropdowns, edit children, tooltip windows, headers,
-scrollbars, property sheets and modal children must be included. Windows-owned
+Stage 4 produced shared presentation services for the two GUI apps, the main
+window and Add dialog. It remains an unaccepted prototype with user-reported
+selection, toolbar hover/repainting and visual-fidelity problems. Do not extend
+it to remaining dialogs by default or treat these bugs as planned behavior.
+The revised approach is recorded in [PRODUCT.md](PRODUCT.md): design coherent
+surfaces, evaluate reuse and replacement, and validate a real operation path
+before selecting a UI framework. Native menus, dropdowns, tooltips, headers,
+scrollbars and modal children all need coverage where retained. Windows-owned
 pickers, message boxes and third-party shell menus may follow OS rendering;
 their functionality and ownership take precedence over exact pixel matching.
 
-Theme preference must use Arkvello-owned storage shared between the two GUI
-processes before persistence is enabled. Do not write new theme values into
+Theme preference must use Arkvello-owned storage shared by whichever application
+processes need it. Do not write new theme values into
 `Software\7-Zip`. Existing settings migration, executable branding and installer
 work remain separate planned tasks.
 
-Feasibility gate: demonstrate both themes on real `7zFM.exe` and `7zG.exe`, real
-archive creation, text/focus/state fidelity and usable scaled layouts. If a
-standard control cannot be themed coherently without behavior changes, record
-the exact exception and compare a scoped drawing adapter against retaining
-native rendering. Do not silently grow this into a replacement frontend.
+Feasibility gate: demonstrate the intended UI with real file/archive operations,
+both themes, stable pointer/keyboard states, usable scaled layouts and accessible
+controls. Evaluate large lists, operation prompts, cancellation and deployment.
+Choose retained controls, replacement surfaces and operation adapters from that
+evidence. The final UI need not preserve the current executables' window
+structure; functional parity remains the acceptance criterion.

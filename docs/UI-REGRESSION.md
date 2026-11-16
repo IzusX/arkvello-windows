@@ -5,6 +5,13 @@ unchecked boxes are **not yet verified**, not known failures. Source inspection
 establishes intended routing, not runtime success. Initial target: Windows 11
 x64, original 7-Zip 26.06 baseline versus the Arkvello build under review.
 
+Under the [revised product brief](../PRODUCT.md) and
+[proposed plan](DEVELOPMENT-PLAN.md), this remains a behavioral baseline.
+Adapt steps that name old menus, pages or helper processes to the redesigned
+entry point while preserving the capability, option coverage and result.
+Record the operation backend/version used. Layout or backend changes do not
+waive cases, establish parity or turn existing partial evidence into a pass.
+
 ## Evidence already available (2026-11-15)
 
 - [x] **BASE-01** Local x64 build and GitHub Actions build pass for all four
@@ -202,6 +209,61 @@ original baseline. Capture baseline observations before changing these surfaces.
   Explorer commands, including uninstall cleanup, in a disposable VM.
 - [ ] **DIST-03** Validate each advertised architecture/Windows version on that
   environment. The current x64 build does not establish ARM64 support.
+
+## Stage 1 additional capability cases
+
+Added 2026-11-16 from [the revised assessment](CAPABILITY-ASSESSMENT.md).
+These are pending acceptance obligations, not findings of runtime failure.
+Use the baseline before interpreting a provider/format limitation as a regression.
+
+- [ ] **CAP-01** In two-panel mode, exercise Alt+arrow same/subfolder navigation,
+  independent archive sessions and correct active-panel/destination state after
+  a prompt. Resize/reopen and check persisted panel state.
+- [ ] **CAP-02** On 10k/100k synthetic items and representative real archives,
+  compare load, sort, scroll and bulk-selection behavior with the baseline.
+  Include two panels, dynamic/reordered columns, mode changes, rename, normal/
+  alternative selection and actual pointer/keyboard/assistive-technology input.
+  Record latency, working set and fixture/environment; these sizes are proposed
+  stress fixtures, not advertised performance guarantees.
+- [ ] **CAP-03** Change files externally during refresh/sort/rename and replace
+  an archive externally. Confirm stale results/handles cannot act on another
+  item; preserve meaningful focus and display refresh errors. Include slow UNC
+  only when an appropriate test share exists.
+- [ ] **CAP-04** Edit a member and a nested-archive member with a harmless
+  external editor. Test update accepted/declined, read-only formats, archive
+  replacement, manager close and editor remaining open; check content, identity,
+  password/Zone.Id policy and cleanup of only owned temporary files.
+- [ ] **CAP-05** Clipboard/drag/drop between panels, Explorer and another test
+  application: large multi-selection, archive items, canceled drop, cut vs copy,
+  modifier effects, shell menu keyboard ownership and native picker fallback.
+  Record supported formats/effects instead of assuming toolkit-local drag works.
+- [ ] **CAP-06** Use an archive fixture with duplicate/ambiguous member paths,
+  nested paths and special names. Select/test/extract/update a particular item;
+  sort/refresh between actions. Compare indexed behavior with any name-based
+  backend candidate; do not infer identity from the displayed row position.
+- [ ] **CAP-07** In an isolated profile, trigger a bounded extraction-memory
+  request. Test allow/skip, remember-for-job and save-for-future limit, Cancel,
+  next archive and UI focus. Verify pause/resume, Background and cancellation
+  while a prompt is active; no uncontrolled real-memory exhaustion is required.
+- [ ] **CAP-08** Distinguish success, warning/partial output, failure and abort.
+  A missing input plus valid input can create an archive that separately tests
+  successfully: the creation warning must remain visible. Test corrupt/denied
+  cases, completion during a decision and worker disconnect if applicable.
+- [ ] **CAP-09** External Diff with the baseline's supported selection and panel
+  combinations, quoted Unicode/spaced paths, invalid executable and Cancel.
+- [ ] **CAP-10** In a disposable settings profile, configure harmless Diff and
+  `7vc` paths to expose conditional version-control commands. Compare Edit,
+  Commit, Revert and Diff, read-only/writable availability, snapshots, timestamps
+  and confirmations. Do not alter the user's real registry or source files.
+- [ ] **CAP-11** In a VM with required assets, test every offered Explorer
+  operation, including open-with-type, checksum generate/test and available email
+  variants, with no main window open and a large multi-selection. Verify results,
+  entry-point identity, errors and coexistence; unavailable mail is recorded.
+- [ ] **CAP-12** Compare original documented/supported FM startup arguments and
+  helper invocations with redesigned entry points: path handoff, long selection,
+  Unicode/quoting, invalid requests and outstanding job/editor lifetime on close.
+  Record any intentional compatibility mapping before claiming equivalent entry
+  point coverage.
 
 ## Acceptance at the stage 4 checkpoint
 

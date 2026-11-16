@@ -1,0 +1,122 @@
+{
+  "date": "2026-11-16T08:43:34.810Z",
+  "browser": {
+    "protocolVersion": "1.3",
+    "product": "Edg/157.0.4341.60",
+    "revision": "@fbcb2989a6c61b72a4919fe1028e58e70131cd46",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0",
+    "jsVersion": "15.7.11.7"
+  },
+  "scope": "HTML design study only; not WinUI/native parity, real DPI or accessibility validation",
+  "checks": [
+    {
+      "name": "11 synthetic rows including parent",
+      "pass": true
+    },
+    {
+      "name": "toolbar glyph geometry stable on pointer move",
+      "pass": true
+    },
+    {
+      "name": "toolbar foreground stays legible on hover",
+      "pass": true
+    },
+    {
+      "name": "toolbar foreground restores after pointer leaves",
+      "pass": true
+    },
+    {
+      "name": "pointer selection changes full row",
+      "pass": true
+    },
+    {
+      "name": "row height 28 CSS px",
+      "pass": true
+    },
+    {
+      "name": "F9 opens two independent panels",
+      "pass": true
+    },
+    {
+      "name": "two panels retain size column",
+      "pass": true
+    },
+    {
+      "name": "inactive selection retained",
+      "pass": true
+    },
+    {
+      "name": "Add focus on archive path",
+      "pass": true
+    },
+    {
+      "name": "independent time override enables retained value",
+      "pass": true
+    },
+    {
+      "name": "password mismatch shows text and focuses confirmation",
+      "pass": true
+    },
+    {
+      "name": "Escape restores opener focus",
+      "pass": true
+    },
+    {
+      "name": "pause / resume illustration",
+      "pass": true
+    },
+    {
+      "name": "conflict reply returns to operation",
+      "pass": true
+    },
+    {
+      "name": "memory policy skips archive, not a file",
+      "pass": true
+    },
+    {
+      "name": "memory limit edit disabled until save selected",
+      "pass": true
+    },
+    {
+      "name": "save limit enables numeric field",
+      "pass": true
+    },
+    {
+      "name": "200% footer inside viewport",
+      "pass": true
+    },
+    {
+      "name": "200% dialog has scrollable content",
+      "pass": true
+    },
+    {
+      "name": "constrained footer visible",
+      "pass": true
+    },
+    {
+      "name": "error retry illustration",
+      "pass": true
+    },
+    {
+      "name": "alternative mode focus independent of marked item",
+      "pass": true
+    },
+    {
+      "name": "Insert toggles marking separately",
+      "pass": true
+    },
+    {
+      "name": "menu arrow navigation",
+      "pass": true
+    },
+    {
+      "name": "menu Escape restores invoker",
+      "pass": true
+    },
+    {
+      "name": "no runtime exceptions",
+      "pass": true
+    }
+  ],
+  "errors": []
+}

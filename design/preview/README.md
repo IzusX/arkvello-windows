@@ -1,16 +1,21 @@
 # Windows 11 interface studies
 
+Historical Win32-era composition. The current C# + WinUI 3 design review is in
+[stage 2](../stage2/README.md); these files/captures remain comparison evidence.
+
 Open [index.html](index.html) directly in a desktop browser; no server, package
 installation or network connection is required. Source is plain HTML/CSS/JS.
 The window selection, theme/scale controls and explanatory text belong to the
 study viewer, not the proposed application chrome.
 
-The native C++ executables remain unchanged. This is a visual reference for
-stage 4, not a web frontend proposal or a replacement archive implementation.
+These HTML studies do not modify the native executables. They were the visual
+reference for stage 4, not a web frontend proposal or an archive implementation.
 The 2026-11-15 revision follows the user's Windows 11 File Explorer screenshot:
 horizontal commands, filled address fields, neutral selection, darker file
 surface and more relaxed 28 DIP rows. The 7zFM menu, commands and panel layout
-remain the product structure; tabs, search and a sidebar are outside this study.
+form this study's structure; tabs, search and a sidebar are outside this study.
+The [revised product brief](../../PRODUCT.md) permits new composition and selective
+UI replacement. This study is not a restriction on the final window structure.
 Sample file names, counts, sizes, paths, memory estimates and enabled/disabled
 controls are illustrative. Typed values stay in the current page only.
 

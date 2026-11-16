@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <WindowsAppSdkDeploymentManagerInitialize>false</WindowsAppSdkDeploymentManagerInitialize>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Arkvello</AssemblyName>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\build\native-bridge\Arkvello.Native.dll" Link="Arkvello.Native.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\build\windows-x64\7z.dll" Link="7z.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\DOC\License.txt;..\..\DOC\copying.txt;..\..\DOC\unRarLicense.txt" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fluent\LICENSE;Assets\Fluent\NOTICE" Link="Licenses\FluentSystemIcons\%(Filename)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

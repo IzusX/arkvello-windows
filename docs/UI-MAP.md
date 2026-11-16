@@ -6,6 +6,19 @@ This is a source inspection, not a claim that every window has been exercised.
 Product constraints are in [PRODUCT.md](../PRODUCT.md); executable scenarios
 and their evidence status are in [UI-REGRESSION.md](UI-REGRESSION.md).
 
+Scope clarification, 2026-11-16: this map describes the original implementation
+and the former in-place modernization plan. Instructions below to preserve
+control IDs, notifications, handlers or window structure apply when reusing
+those components. They do not prohibit replacement UI under the revised product
+brief. Preserve capabilities and operation semantics; replace/adapt UI-bound
+code deliberately and validate equivalent behavior.
+
+The revised stage 1 [capability/reuse assessment](CAPABILITY-ASSESSMENT.md)
+extends this historical source map with operation routes, hidden/conditional
+features, complete behavior obligations and risks. Its
+[technology options](TECHNOLOGY-OPTIONS.md) supersede the old default choice
+below; no replacement stack has yet been selected.
+
 ## 1. Executables and operation paths
 
 The baseline build contains two separate GUI processes. Styling only `7zFM.exe`

@@ -1,0 +1,108 @@
+<Window x:Class="Arkvello.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:Arkvello.Controls">
+  <Window.SystemBackdrop><MicaBackdrop Kind="Base"/></Window.SystemBackdrop>
+  <Grid x:Name="WindowHost" SizeChanged="OnWindowSizeChanged">
+  <Viewbox Stretch="Fill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" UseLayoutRounding="False">
+  <Grid x:Name="Root" Background="Transparent" Loaded="OnLoaded" KeyDown="OnRootKeyDown">
+    <Grid.Resources>
+      <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="ScrollBarBackground" Color="#F3F3F3"/>
+          <SolidColorBrush x:Key="ScrollBarBackgroundPointerOver" Color="#F3F3F3"/>
+          <SolidColorBrush x:Key="ScrollBarBackgroundDisabled" Color="#F3F3F3"/>
+          <SolidColorBrush x:Key="ScrollViewerScrollBarSeparatorBackground" Color="#F3F3F3"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#E5E5E5"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#DDDDDD"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#D5D5D5"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="ScrollBarBackground" Color="#202020"/>
+          <SolidColorBrush x:Key="ScrollBarBackgroundPointerOver" Color="#202020"/>
+          <SolidColorBrush x:Key="ScrollBarBackgroundDisabled" Color="#202020"/>
+          <SolidColorBrush x:Key="ScrollViewerScrollBarSeparatorBackground" Color="#202020"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#414141"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#494949"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#505050"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+          <SolidColorBrush x:Key="ScrollBarBackground" Color="{ThemeResource SystemColorWindowColor}"/>
+          <SolidColorBrush x:Key="ScrollBarBackgroundPointerOver" Color="{ThemeResource SystemColorWindowColor}"/>
+          <SolidColorBrush x:Key="ScrollBarBackgroundDisabled" Color="{ThemeResource SystemColorWindowColor}"/>
+          <SolidColorBrush x:Key="ScrollViewerScrollBarSeparatorBackground" Color="{ThemeResource SystemColorWindowColor}"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="{ThemeResource SystemColorHighlightColor}"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="{ThemeResource SystemColorHighlightColor}"/>
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="{ThemeResource SystemColorHighlightColor}"/>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+      <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+      <CornerRadius x:Key="ListViewItemCornerRadius">0</CornerRadius>
+      <Style TargetType="TextBlock"><Setter Property="FontSize" Value="14"/></Style>
+      <Style TargetType="Button"><Setter Property="CornerRadius" Value="4"/></Style>
+      <Style x:Key="NavigationButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="36"/><Setter Property="Height" Value="36"/>
+        <Setter Property="MinWidth" Value="36"/><Setter Property="Padding" Value="0"/>
+        <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+      </Style>
+      <Style TargetType="ListViewItem">
+        <Setter Property="MinHeight" Value="28"/><Setter Property="Height" Value="28"/>
+        <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="CornerRadius" Value="0"/>
+      </Style>
+      </ResourceDictionary>
+    </Grid.Resources>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="52"/><RowDefinition Height="50"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="28"/></Grid.RowDefinitions>
+    <MenuBar x:Name="Menus" Background="Transparent" VerticalAlignment="Top">
+      <MenuBarItem Title="Файл">
+        <MenuFlyoutItem Text="Открыть архив…" Click="OnOpenArchive"/>
+        <MenuFlyoutItem Text="Извлечь…" Click="OnExtract"/>
+        <MenuFlyoutItem Text="Проверить" Click="OnTest"/>
+        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Выход" Click="OnExit"/>
+      </MenuBarItem>
+      <MenuBarItem Title="Правка"><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/></MenuBarItem>
+      <MenuBarItem Title="Вид">
+        <MenuFlyoutItem Text="Таблица" Tag="Details" Click="OnView"/>
+        <MenuFlyoutItem Text="Список" Tag="List" Click="OnView"/>
+        <MenuFlyoutItem Text="Мелкие значки" Tag="SmallIcons" Click="OnView"/>
+        <MenuFlyoutItem Text="Крупные значки" Tag="LargeIcons" Click="OnView"/>
+        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Обновить" Click="OnRefresh"/>
+        <MenuFlyoutSubItem x:Name="ScaleMenu" Text="Масштаб основного окна"/>
+        <MenuFlyoutSubItem Text="Тема"><MenuFlyoutItem Text="Системная" Tag="Default" Click="OnTheme"/><MenuFlyoutItem Text="Светлая" Tag="Light" Click="OnTheme"/><MenuFlyoutItem Text="Тёмная" Tag="Dark" Click="OnTheme"/></MenuFlyoutSubItem>
+      </MenuBarItem>
+      <MenuBarItem Title="Избранное" IsEnabled="False"/>
+      <MenuBarItem Title="Сервис" IsEnabled="False"/>
+      <MenuBarItem Title="Справка"><MenuFlyoutItem Text="О технической сборке" Click="OnAbout"/></MenuBarItem>
+    </MenuBar>
+    <Grid x:Name="Navigation" Grid.Row="1" Padding="16,8" ColumnSpacing="8">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Button x:Name="BackButton" Style="{StaticResource NavigationButtonStyle}" Click="OnBack" ToolTipService.ToolTip="Назад (Alt+←)" AutomationProperties.Name="Назад"><IconSourceElement IconSource="{StaticResource FluentBack}" Width="20" Height="20"/></Button>
+      <Button Grid.Column="1" Style="{StaticResource NavigationButtonStyle}" Click="OnParent" ToolTipService.ToolTip="На уровень вверх (Backspace)" AutomationProperties.Name="На уровень вверх"><IconSourceElement IconSource="{StaticResource FluentParent}" Width="20" Height="20"/></Button>
+      <Button Grid.Column="2" Style="{StaticResource NavigationButtonStyle}" Click="OnRefresh" ToolTipService.ToolTip="Обновить (Ctrl+R)" AutomationProperties.Name="Обновить"><IconSourceElement IconSource="{StaticResource FluentRefresh}" Width="20" Height="20"/></Button>
+      <TextBox x:Name="Address" Grid.Column="3" Height="34" FontSize="14" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalContentAlignment="Center" KeyDown="OnAddressKeyDown" AutomationProperties.Name="Путь к папке или архиву"/>
+    </Grid>
+    <Border Grid.Row="2" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <controls:FileCommandBar x:Name="Commands" Background="Transparent" DefaultLabelPosition="Right" IsOpen="False" IsDynamicOverflowEnabled="True" OverflowButtonVisibility="Auto" HorizontalAlignment="Stretch" Margin="16,0" VerticalAlignment="Center">
+      <AppBarButton Label="Добавить" IsEnabled="False" ToolTipService.ToolTip="Создание архивов — следующий этап"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentAdd}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton x:Name="ExtractButton" Label="Извлечь" Click="OnExtract"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentExtract}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton x:Name="TestButton" Label="Проверить" Click="OnTest"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentTest}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarSeparator/>
+      <AppBarButton Label="Копировать" IsEnabled="False"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentCopy}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton Label="Переместить" IsEnabled="False"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentMove}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton Label="Удалить" IsEnabled="False"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentDelete}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarSeparator/>
+      <AppBarButton Label="Вид"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentView}"/></AppBarButton.Icon><AppBarButton.Flyout><MenuFlyout>
+        <MenuFlyoutItem Text="Таблица" Tag="Details" Click="OnView"/><MenuFlyoutItem Text="Список" Tag="List" Click="OnView"/>
+        <MenuFlyoutItem Text="Мелкие значки" Tag="SmallIcons" Click="OnView"/><MenuFlyoutItem Text="Крупные значки" Tag="LargeIcons" Click="OnView"/>
+      </MenuFlyout></AppBarButton.Flyout></AppBarButton>
+    </controls:FileCommandBar>
+    </Border>
+    <InfoBar x:Name="Notice" Grid.Row="3" IsOpen="False" IsClosable="True" Severity="Error"/>
+    <Grid x:Name="ListHost" Grid.Row="4"/>
+    <Border Grid.Row="5" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Padding="16,4">
+      <TextBlock x:Name="Status" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.LiveSetting="Polite"/>
+    </Border>
+  </Grid>
+  </Viewbox>
+  </Grid>
+</Window>

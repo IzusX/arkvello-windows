@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Arkvello — проект интерфейса WinUI 3</title>
+  <link rel="stylesheet" href="study.css">
+  <script src="study.js" defer></script>
+</head>
+<body>
+  <header class="review-controls" aria-label="Управление макетом">
+    <strong>Arkvello · проект интерфейса</strong>
+    <label>Окно <select id="surface"><option value="main">Файловый менеджер</option><option value="add">Добавить в архив</option><option value="extract">Распаковать</option><option value="progress">Ход операции</option><option value="overwrite">Замена файла</option><option value="password">Пароль</option><option value="memory">Ограничение памяти</option><option value="result">Результат с предупреждениями</option><option value="settings">Параметры</option></select></label>
+    <label>Тема <select id="theme"><option value="system">Системная</option><option value="dark">Тёмная</option><option value="light">Светлая</option><option value="contrast">Контрастная (пример)</option></select></label>
+    <label>Акцент <input id="accent" type="color" value="#637bc4"></label>
+    <label>Масштаб <select id="scale"><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150%</option><option value="2">200%</option></select></label>
+    <label>Список <select id="state"><option value="normal">Обычный</option><option value="long">Длинное имя</option><option value="empty">Пустой</option><option value="loading">Загрузка</option><option value="error">Нет доступа</option></select></label>
+    <label class="check"><input type="checkbox" id="two">Две панели</label>
+    <label class="check"><input type="checkbox" id="alternative">Альтернативное выделение</label>
+  </header>
+  <p class="review-note">Интерактивный макет, этап 2. Данные и значения условные; файлы не читаются и не изменяются. Акцент и масштаб здесь задаются вручную.</p>
+  <main id="stage">
+    <section id="manager" class="window" aria-label="Arkvello — файловый менеджер">
+      <header class="caption"><span class="app-mark" aria-hidden="true"></span><span>Arkvello</span><span class="caption-path">Загрузки</span><div class="caption-actions" aria-hidden="true"><span>―</span><span>□</span><span>×</span></div></header>
+      <nav id="menubar" aria-label="Главное меню"></nav>
+      <div id="panels"></div>
+      <footer class="app-status"><span id="total">Папок: 3 · Файлов: 7</span><span id="selected">Выбрано: 1 · 18,4 МБ</span><span class="status-tail">F3 Просмотр · F4 Редактор · F9 Две панели</span></footer>
+    </section>
+  </main>
+  <p id="feedback" role="status">Выберите строку, откройте меню или нажмите «Добавить». Tab и стрелки доступны в макете.</p>
+  <dialog id="sheet" aria-labelledby="sheet-title"><form id="sheet-form"><header class="sheet-title"><h1 id="sheet-title"></h1><button type="button" id="close-sheet" class="icon-only" aria-label="Закрыть диалог"></button></header><div id="sheet-context"></div><div id="sheet-content"></div><footer id="sheet-footer"></footer></form></dialog>
+  <div id="popup" popover="auto" aria-label="Команды"></div>
+</body>
+</html>

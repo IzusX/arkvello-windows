@@ -4,6 +4,19 @@ Stage 4, 2026-11-16. This is a development checkpoint for the main window,
 Add to Archive and its nested Options dialog. The C++/Win32 control hierarchy,
 command IDs, archive engine and helper-process protocol remain in use.
 
+## Status after user review
+
+The prototype is not accepted. The user reported incorrect file-selection
+geometry; toolbar icons becoming dark on hover, failing to restore and shifting
+between buttons; and visual differences from the approved second Explorer-based
+study. These issues remain unresolved. Message-driven checks and static captures
+below do not verify ordinary pointer interaction or establish design fidelity.
+
+The revised [product brief](../PRODUCT.md) permits redesigned composition and
+selective UI replacement with full functional parity. This prototype supplies
+evidence and reusable work; its window/control structure is not a constraint on
+the final interface. Reassess the architecture before extending its styling.
+
 ## What is implemented
 
 - Shared `ArkvelloTheme.cpp` presentation adapter in both `7zFM.exe` and
