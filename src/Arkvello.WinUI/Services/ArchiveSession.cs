@@ -6,6 +6,7 @@ namespace Arkvello.Services;
 public sealed class ArchiveSession : IDisposable
 {
     private readonly ArchiveTemporaryFile? temporary;
+    public Guid Identity { get; } = Guid.NewGuid();
     public NativeArchive Archive { get; }
     public IReadOnlyList<ArchiveEntry> Entries { get; }
     public ArchiveSession? Parent { get; }

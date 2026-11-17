@@ -284,8 +284,8 @@ Backend checks passed against the production adapter/native DLL:
   prompt, pause/cancel, corruption and 100,000-entry listing checks also pass.
 
 Evidence: `build/agent-bridge-checks.log` and the generated `checks.json` path
-printed there. Release WinUI build passed with zero warnings/errors. Native
-pointer/keyboard acceptance of this new navigation is still to be recorded.
+printed there. Release WinUI build passed with zero warnings/errors. Bounded
+native pointer/keyboard acceptance is recorded in the follow-up below.
 
 The first update test exposed an incompatible `Z7_DEVICE_FILE` build define;
 matching native structure layouts fixed the heap corruption. The native library
@@ -294,3 +294,45 @@ codecs. See the revised [boundary decision](decisions/0002-working-slice-boundar
 The full dedicated source build, arbitrary encrypted-format parameter fidelity,
 external editing UI, root commit/recovery and stage-3 accessibility/deployment
 gates remain open. Successful staging does not establish complete edit-back.
+
+### Native navigation verification
+
+2026-11-17: repeated real-window verification using the generated fixture
+`build/bridge-checks-671f240737974985813b327086abd37d/nested.tar` in Details view,
+the existing dark theme and the user's saved main-window scale.
+
+The first pass found Enter consumed by native ListViewItem handling, selection
+identities colliding across sessions, and focus falling back to the File menu
+when a focused list was replaced during a key gesture. Corrections:
+
+- Handle Enter before native item handling; resolve the focused item's container,
+  including an unselected current item. Consume its release and open only after
+  the key gesture finishes, so that the new surface cannot receive that release.
+- Restore focus after the new list is loaded and pending layout/focus work ends.
+- Scope archive row/folder identities to a session GUID plus native index/path.
+  Preserve selection within a session without transferring it to unrelated
+  entries with the same index in another level.
+- Handle Alt+Left at the window preview boundary, matching the Back tooltip.
+
+Final executed scenarios:
+
+- Open the root by editable path; double-click into ZIP and its folder/TAR.
+- Keyboard selection with End, then consecutive Enter gestures through ZIP,
+  folder and inner TAR without opening a menu/picker. Both identically named
+  inner files remain separate rows; no selection leaks into the new session.
+- Up button and Backspace return to the parent folder and select leaf.tar.
+- Refresh button and Ctrl+R redraw the nested folder, retaining that selection.
+- Alt+Left and Back button traverse live parent history. Root Ctrl+R reopens
+  the source; Up exits to its filesystem directory; Back reopens the closed root
+  session without reinterpreting disposed nested indices.
+
+Capture: `design/winui-slice/captures/nested-return-selection.jpg` (fixture only).
+Release build: zero warnings/errors, `build/navigation-ui-build.log`. Final
+verification executable: `build/navigation-validation/Arkvello.exe`, built with
+an explicit OutputPath while an older test instance held the ordinary output.
+The ordinary output directory does not contain these final keyboard corrections
+until rebuilt after that older instance is closed.
+
+This is a bounded Details-view navigation pass, not certification of every view,
+original mark/current-item mode, screen reader, DPI/theme state or editor flow.
+The remaining stage-3 gates above still apply.

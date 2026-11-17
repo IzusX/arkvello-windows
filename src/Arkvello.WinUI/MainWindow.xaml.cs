@@ -215,10 +215,32 @@ public sealed partial class MainWindow : Window
         };
         list.SelectionChanged += (_, _) => UpdateStatus();
         list.DoubleTapped += async (_, _) => { if (!busy && list.SelectedItem is FileEntry item) await OpenItem(item); };
-        list.KeyDown += async (_, e) =>
+        // ListViewItem consumes Enter in its native KeyDown handling. Handle
+        // navigation in the preview phase so one Enter opens the focused item.
+        var keyboardList = list;
+        FileEntry? pendingOpen = null;
+        list.PreviewKeyDown += async (_, e) =>
         {
-            if (e.Key == VirtualKey.Enter && !busy && list.SelectedItem is FileEntry item) { e.Handled = true; await OpenItem(item); }
-            if (e.Key == VirtualKey.Back && !busy) { e.Handled = true; await Parent(); }
+            if (busy || configuring) return;
+            if (e.Key == VirtualKey.Enter)
+            {
+                FileEntry? focused = null;
+                // A focused container need not be selected or have the item as
+                // its DataContext. Resolve the routed source through its owner.
+                for (var source = e.OriginalSource as DependencyObject; source != null && !ReferenceEquals(source, list); source = VisualTreeHelper.GetParent(source))
+                    if (source is SelectorItem container && list.ItemFromContainer(container) is FileEntry entry) { focused = entry; break; }
+                if ((focused ?? list.SelectedItem as FileEntry) is { } item) { e.Handled = true; pendingOpen = item; }
+            }
+            if (e.Key == VirtualKey.Back) { e.Handled = true; await Parent(); }
+        };
+        list.PreviewKeyUp += async (_, e) =>
+        {
+            if (e.Key != VirtualKey.Enter || pendingOpen == null) return;
+            e.Handled = true;
+            var item = pendingOpen; pendingOpen = null;
+            // Finish the key gesture before replacing its focused control or
+            // opening a dialog; the release must not activate a new surface.
+            if (!busy && !configuring && ReferenceEquals(list, keyboardList)) await OpenItem(item);
         };
         AutomationProperties.SetName(list, "Файлы");
         AutomationProperties.SetAutomationId(list, "FileList");
@@ -418,10 +440,29 @@ public sealed partial class MainWindow : Window
                 if (!folders.TryGetValue(folder, out var values)) folders.Add(folder, values = []);
                 values.Add(entry);
             }
-            else children.Add(new("arc:" + entry.Index, tail, path, false, entry.Size, entry.Modified, entry.Index));
+            else children.Add(new("arc:" + archiveSession!.Identity + ":" + entry.Index, tail, path, false, entry.Size, entry.Modified, entry.Index));
         }
-        foreach (var pair in folders) children.Add(new("folder:" + archivePrefix + pair.Key, pair.Key, archivePrefix + pair.Key + "/", true, null, null, DescendantIndices: pair.Value.Select(e => e.Index).ToArray()));
+        foreach (var pair in folders) children.Add(new("folder:" + archiveSession!.Identity + ":" + archivePrefix + pair.Key, pair.Key, archivePrefix + pair.Key + "/", true, null, null, DescendantIndices: pair.Value.Select(e => e.Index).ToArray()));
         entries = children; ApplySort(); BuildList(); Address.Text = Location;
+        FocusFileList();
+    }
+
+    private void FocusFileList()
+    {
+        var target = list;
+        void FocusLoadedList()
+        {
+            if (!ReferenceEquals(list, target)) return;
+            target.UpdateLayout();
+            var item = target.SelectedItem ?? target.Items.FirstOrDefault();
+            if (item != null && target.ContainerFromItem(item) is Control container) container.Focus(FocusState.Programmatic);
+            else target.Focus(FocusState.Programmatic);
+        }
+        // Removing the old focused ListView can schedule WinUI's automatic
+        // fallback to the menu. Restore focus after that layout/focus work.
+        void QueueFocus() => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, FocusLoadedList);
+        if (target.IsLoaded) QueueFocus();
+        else target.Loaded += (_, _) => QueueFocus();
     }
     private async Task OpenItem(FileEntry item)
     {
@@ -686,6 +727,8 @@ public sealed partial class MainWindow : Window
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (busy || configuring) return;
+        var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (alt && e.Key == VirtualKey.Left) { e.Handled = true; OnBack(sender, e); return; }
         var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
         if (ctrl && e.Key == VirtualKey.L) { Address.Focus(FocusState.Keyboard); Address.SelectAll(); e.Handled = true; }
         if (ctrl && e.Key == VirtualKey.R && !busy) { OnRefresh(sender, e); e.Handled = true; }

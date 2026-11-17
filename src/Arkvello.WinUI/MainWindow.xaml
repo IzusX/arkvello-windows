@@ -2,7 +2,7 @@
   <Window.SystemBackdrop><MicaBackdrop Kind="Base"/></Window.SystemBackdrop>
   <Grid x:Name="WindowHost" SizeChanged="OnWindowSizeChanged">
   <Viewbox Stretch="Fill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" UseLayoutRounding="False">
-  <Grid x:Name="Root" Background="Transparent" Loaded="OnLoaded" KeyDown="OnRootKeyDown">
+  <Grid x:Name="Root" Background="Transparent" Loaded="OnLoaded" PreviewKeyDown="OnRootKeyDown">
     <Grid.Resources>
       <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
