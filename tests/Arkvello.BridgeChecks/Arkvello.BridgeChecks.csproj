@@ -2,6 +2,7 @@
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><RuntimeIdentifier>win-x64</RuntimeIdentifier><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\Arkvello.WinUI\Services\NativeArchive.cs" Link="NativeArchive.cs"/>
+    <Compile Include="..\..\src\Arkvello.WinUI\Services\ArchiveSession.cs" Link="ArchiveSession.cs"/>
     <Content Include="..\..\build\native-bridge\Arkvello.Native.dll;..\..\build\windows-x64\7z.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>

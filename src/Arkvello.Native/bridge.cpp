@@ -10,8 +10,15 @@
 #include "../../CPP/Windows/FileName.h"
 #include "../../CPP/Windows/PropVariant.h"
 #include "../../CPP/7zip/UI/Common/ArchiveExtractCallback.h"
+#include "../../CPP/7zip/UI/Agent/Agent.h"
 
 HINSTANCE g_hInstance = nullptr;
+// Agent exposes comparison methods through its folder vtable. The slice's
+// folder is used only for native-index mapping, never for UI sorting. Avoid the
+// original PanelSort dependency and its application-global settings/window.
+int CompareFileNames_ForFolderList(const wchar_t *a, const wchar_t *b) {
+  return CompareStringOrdinal(a, -1, b, -1, TRUE) - CSTR_EQUAL;
+}
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
   if (reason == DLL_PROCESS_ATTACH) { g_hInstance = instance; DisableThreadLibraryCalls(instance); }
   return TRUE;
@@ -65,9 +72,12 @@ struct Job {
 struct Session {
   CCodecs *codecs = new CCodecs;
   CMyComPtr<IUnknown> codecsOwner;
-  CArchiveLink link;
-  Session() : codecsOwner(static_cast<ICompressCodecsInfo *>(codecs)) {}
-  ~Session() { link.Release(); codecs->CloseLibs(); }
+  CAgent *agent = new CAgent(codecs);
+  CMyComPtr<IInFolderArchive> agentOwner;
+  CArchiveLink &link;
+  Session() : codecsOwner(static_cast<ICompressCodecsInfo *>(codecs)),
+    agentOwner(agent), link(agent->_archiveLink) {}
+  ~Session() { link.Release(); agentOwner.Release(); codecs->CloseLibs(); }
 };
 
 class OpenCallback final : public IOpenCallbackUI {
@@ -128,6 +138,101 @@ uint64_t Number(IInArchive *arc, UInt32 index, PROPID id, bool *defined = nullpt
   if (defined) *defined = p.vt == VT_UI8 || p.vt == VT_UI4;
   return p.vt == VT_UI8 ? p.uhVal.QuadPart : p.vt == VT_UI4 ? p.ulVal : 0;
 }
+
+// Deliberately a regular byte stream: link/ADS semantics and archive-controlled
+// paths must not escape into a temporary file used by an external application.
+HRESULT CheckFile(Session &s, UInt32 index) {
+  UInt32 count = 0; RINOK(s.link.GetArchive()->GetNumberOfItems(&count))
+  if (index >= count) return E_INVALIDARG;
+  bool value = false;
+  RINOK(Archive_IsItem_Dir(s.link.GetArchive(), index, value))
+  if (value) return E_INVALIDARG;
+  RINOK(Archive_IsItem_AltStream(s.link.GetArchive(), index, value))
+  if (value) return E_NOTIMPL;
+  for (PROPID id : { kpidSymLink, kpidHardLink }) {
+    NWindows::NCOM::CPropVariant p;
+    RINOK(s.link.GetArchive()->GetProperty(index, id, &p))
+    if (p.vt == VT_BSTR && p.bstrVal && *p.bstrVal) return E_NOTIMPL;
+  }
+  return S_OK;
+}
+
+class ExportCallback final : public IArchiveExtractCallback,
+  public ICryptoGetTextPassword, public CMyUnknownImp {
+  Z7_COM_QI_BEGIN2(IArchiveExtractCallback)
+  Z7_COM_QI_ENTRY(ICryptoGetTextPassword)
+  Z7_COM_QI_END
+  Z7_COM_ADDREF_RELEASE
+  Job &job;
+  UInt32 index;
+  COutFileStream *file;
+  CMyComPtr<ISequentialOutStream> stream;
+public:
+  ExportCallback(Job &j, UInt32 i, COutFileStream *f) : job(j), index(i), file(f), stream(f) {}
+  bool GotStream = false;
+  bool Finished = false;
+  Z7_COM7F_IMF(SetTotal(UInt64 n)) { job.total = n; return job.check(); }
+  Z7_COM7F_IMF(SetCompleted(const UInt64 *n)) { return job.progress(n); }
+  Z7_COM7F_IMF(CryptoGetTextPassword(BSTR *p)) { return job.password(p); }
+  Z7_COM7F_IMF(GetStream(UInt32 i, ISequentialOutStream **out, Int32 mode)) {
+    *out = nullptr; RINOK(job.check())
+    if (i == index && mode == NArchive::NExtract::NAskMode::kExtract) {
+      *out = stream; (*out)->AddRef(); GotStream = true;
+    }
+    return S_OK;
+  }
+  Z7_COM7F_IMF(PrepareOperation(Int32)) { return job.check(); }
+  Z7_COM7F_IMF(SetOperationResult(Int32 result)) {
+    if (result != NArchive::NExtract::NOperationResult::kOK) {
+      AvEvent e{}; e.kind = 5; e.code = result; e.index = index;
+      RINOK(job.emit(e))
+      return E_FAIL;
+    }
+    Finished = true;
+    return job.check();
+  }
+  HRESULT Close() { return file->Close(); }
+};
+
+class UpdateCallback final : public IFolderArchiveUpdateCallback,
+  public IFolderArchiveUpdateCallback2, public ICryptoGetTextPassword,
+  public ICryptoGetTextPassword2, public CMyUnknownImp {
+  Z7_COM_QI_BEGIN2(IFolderArchiveUpdateCallback)
+  Z7_COM_QI_ENTRY(IFolderArchiveUpdateCallback2)
+  Z7_COM_QI_ENTRY(ICryptoGetTextPassword)
+  Z7_COM_QI_ENTRY(ICryptoGetTextPassword2)
+  Z7_COM_QI_END
+  Z7_COM_ADDREF_RELEASE
+  Job &job;
+  bool encrypted;
+  HRESULT path(const wchar_t *p) { AvEvent e{}; e.kind = 6; e.path1 = p; return job.emit(e); }
+  HRESULT issue(const wchar_t *p, HRESULT code) {
+    AvEvent e{}; e.kind = 5; e.path1 = p; e.code = (uint32_t)code;
+    RINOK(job.emit(e))
+    return FAILED(code) ? code : E_FAIL;
+  }
+public:
+  UpdateCallback(Job &j, bool encrypt) : job(j), encrypted(encrypt) {}
+  Z7_COM7F_IMF(SetTotal(UInt64 n)) { job.total = n; return job.check(); }
+  Z7_COM7F_IMF(SetCompleted(const UInt64 *n)) { return job.progress(n); }
+  Z7_COM7F_IMF(CryptoGetTextPassword(BSTR *p)) { return job.password(p); }
+  Z7_COM7F_IMF(CryptoGetTextPassword2(Int32 *defined, BSTR *p)) {
+    // Preserve encryption: a codec request always requires an explicit secret.
+    *defined = 0; *p = nullptr;
+    if (!encrypted) return job.check();
+    RINOK(job.password(p))
+    *defined = 1; return S_OK;
+  }
+  Z7_COM7F_IMF(CompressOperation(const wchar_t *p)) { return path(p); }
+  Z7_COM7F_IMF(DeleteOperation(const wchar_t *p)) { return path(p); }
+  Z7_COM7F_IMF(OperationResult(Int32 r)) { return r == 0 ? job.check() : issue(nullptr, E_FAIL); }
+  Z7_COM7F_IMF(UpdateErrorMessage(const wchar_t *p)) { return issue(p, E_FAIL); }
+  Z7_COM7F_IMF(SetNumFiles(UInt64)) { return job.check(); }
+  Z7_COM7F_IMF(OpenFileError(const wchar_t *p, HRESULT h)) { return issue(p, h); }
+  Z7_COM7F_IMF(ReadingFileError(const wchar_t *p, HRESULT h)) { return issue(p, h); }
+  Z7_COM7F_IMF(ReportExtractResult(Int32 r, Int32, const wchar_t *p)) { return r == 0 ? job.check() : issue(p, E_FAIL); }
+  Z7_COM7F_IMF(ReportUpdateOperation(UInt32, const wchar_t *p, Int32)) { RINOK(job.check()) return path(p); }
+};
 }
 
 uint32_t av_abi() { return 1; }
@@ -172,6 +277,7 @@ int32_t av_open(const wchar_t *path, void *value, void **result) {
     options.props = nullptr;
     OpenCallback callback(*static_cast<Job *>(value));
     RINOK(session->link.Open_Strict(options, &callback))
+    session->agent->_archiveFilePath = path;
     for (unsigned i = 0; i < session->link.Arcs.Size(); ++i) {
       const auto &info = session->link.Arcs[i].ErrorInfo;
       if (info.ErrorFlags || info.WarningFlags) {
@@ -251,4 +357,69 @@ int32_t av_extract(void *sessionValue, void *jobValue, const uint32_t *indices,
     HRESULT closeResult = closer.Close();
     return h == S_OK ? closeResult : h;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
+}
+
+int32_t av_export_item(void *sessionValue, void *jobValue, uint32_t index, const wchar_t *output) {
+  if (!sessionValue || !jobValue || !output || !*output) return E_INVALIDARG;
+  try {
+    auto &session = *static_cast<Session *>(sessionValue);
+    auto &job = *static_cast<Job *>(jobValue);
+    RINOK(job.check())
+    RINOK(CheckFile(session, index))
+    auto *file = new COutFileStream;
+    CMyComPtr<IOutStream> owner = file;
+    if (!file->Create_NEW(output)) return HRESULT_FROM_WIN32(GetLastError());
+    auto *spec = new ExportCallback(job, index, file);
+    CMyComPtr<IArchiveExtractCallback> callback = spec;
+    HRESULT h = session.link.GetArchive()->Extract(&index, 1, false, callback);
+    HRESULT closed = spec->Close();
+    if (h != S_OK) return h;
+    if (closed != S_OK) return closed;
+    return spec->GotStream && spec->Finished ? S_OK : E_FAIL;
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; }
+    catch (...) { return E_FAIL; }
+}
+
+int32_t av_replace_item(void *sessionValue, void *jobValue, uint32_t index,
+  const wchar_t *replacement, const wchar_t *output) {
+  if (!sessionValue || !jobValue || !replacement || !*replacement || !output || !*output) return E_INVALIDARG;
+  try {
+    auto &session = *static_cast<Session *>(sessionValue);
+    auto &job = *static_cast<Job *>(jobValue);
+    RINOK(job.check())
+    RINOK(CheckFile(session, index))
+    auto &agent = *session.agent;
+    if (!agent.CanUpdate() || agent.IsThere_ReadOnlyArc()) return E_NOTIMPL;
+    CMyComPtr<IFolderFolder> folder;
+    agent._progress_for_Open = nullptr;
+    RINOK(session.agentOwner->BindToRootFolder(&folder))
+    CMyComPtr<IArchiveFolderInternal> internal;
+    RINOK(folder.QueryInterface(IID_IArchiveFolderInternal, &internal))
+    CAgentFolder *flat = nullptr;
+    RINOK(internal->GetAgentFolder(&flat))
+    RINOK(static_cast<IFolderSetFlatMode *>(flat)->SetFlatMode(1))
+    RINOK(folder->LoadItems())
+    UInt32 n = 0; RINOK(folder->GetNumberOfItems(&n))
+    UInt32 mapped = n;
+    for (UInt32 i = 0; i < n; ++i) {
+      RINOK(job.check())
+      if (flat->GetRealIndex(i) == (int)index) { mapped = i; break; }
+    }
+    if (mapped == n) return E_INVALIDARG;
+    RINOK(agent.SetFolder(folder))
+    struct ResetFolder { CAgent &agent; ~ResetFolder() { agent.SetFolder(nullptr); } } reset{agent};
+    // This does not call CommonUpdateOperation/MoveToOriginal: no registry work
+    // directory preference or mutation of the input archive is involved.
+    auto *file = new COutFileStream;
+    CMyComPtr<IOutStream> stream = file;
+    if (!file->Create_NEW(output)) return HRESULT_FROM_WIN32(GetLastError());
+    bool encrypted = false;
+    RINOK(Archive_GetItemBoolProp(session.link.GetArchive(), index, kpidEncrypted, encrypted))
+    auto *spec = new UpdateCallback(job, encrypted || session.link.PasswordWasAsked);
+    CMyComPtr<IFolderArchiveUpdateCallback> callback = spec;
+    HRESULT h = agent.UpdateOneFile(stream, &mapped, 1, replacement, callback);
+    HRESULT closed = file->Close();
+    return h == S_OK ? closed : h;
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; }
+    catch (...) { return E_FAIL; }
 }

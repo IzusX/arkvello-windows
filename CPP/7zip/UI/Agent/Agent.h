@@ -248,7 +248,11 @@ public:
   IArchiveOpenCallback *_progress_ArchiveOpenCallback_for_Open; // it's for parsing after archive openning
   IProgress *_progress_for_Open; // it's for parsing after archive openning
 
-  CAgent();
+  // A host may supply its own codec lifetime/loading policy. The original FM
+  // keeps the default global loader; Arkvello supplies only its adjacent DLL.
+  CCodecs *Codecs;
+  CCodecs *GetCodecs() const { return Codecs ? Codecs : g_CodecsObj; }
+  CAgent(CCodecs *codecs = NULL);
   ~CAgent();
 
   const CArc &GetArc() const { return _archiveLink.Arcs.Back(); }
@@ -267,7 +271,7 @@ public:
       const CArc &arc = _archiveLink.Arcs[i];
       if (arc.FormatIndex < 0
           || arc.IsReadOnly
-          || !g_CodecsObj->Formats[arc.FormatIndex].UpdateEnabled)
+          || !GetCodecs()->Formats[arc.FormatIndex].UpdateEnabled)
         return true;
     }
     return false;
@@ -277,7 +281,7 @@ public:
   {
     if (arc.FormatIndex < 0)
       return UString("Parser");
-    return g_CodecsObj->GetFormatNamePtr(arc.FormatIndex);
+    return GetCodecs()->GetFormatNamePtr(arc.FormatIndex);
   }
 
   UString GetErrorMessage() const
@@ -295,7 +299,7 @@ public:
         else
         {
           s2 += "Cannot open the file as [";
-          s2 += g_CodecsObj->GetFormatNamePtr(arc.ErrorInfo.ErrorFormatIndex);
+          s2 += GetCodecs()->GetFormatNamePtr(arc.ErrorInfo.ErrorFormatIndex);
           s2 += "] archive";
         }
       }

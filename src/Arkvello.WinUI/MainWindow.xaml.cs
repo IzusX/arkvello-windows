@@ -21,10 +21,14 @@ namespace Arkvello;
 
 public sealed partial class MainWindow : Window
 {
-    private NativeArchive? archive;
-    private IReadOnlyList<ArchiveEntry> archiveEntries = [];
-    private string directory = "", archivePath = "", archivePrefix = "";
-    private readonly Stack<string> history = new();
+    private ArchiveSession? archiveSession;
+    private NativeArchive? archive => archiveSession?.Archive;
+    private IReadOnlyList<ArchiveEntry> archiveEntries => archiveSession?.Entries ?? [];
+    private string directory = "", archivePrefix = "";
+    private string archivePath => archiveSession?.DisplayPath ?? "";
+    private sealed record NavigationLocation(string Path, string Prefix, ArchiveSession? Session);
+    private NavigationLocation CurrentLocation => new(archiveSession?.RootPath ?? directory, archivePrefix, archiveSession);
+    private readonly Stack<NavigationLocation> history = new();
     private List<FileEntry> entries = [];
     private ListViewBase list = null!;
     private readonly List<Column> columns = [new("Имя", "Name", 420), new("Дата изменения", "ModifiedText", 210), new("Тип", "TypeText", 170), new("Размер", "SizeText", 150)];
@@ -71,7 +75,7 @@ public sealed partial class MainWindow : Window
         {
             if (busy) { e.Cancel = true; closing = true; CancelOperation(); }
         };
-        Closed += (_, _) => { archive?.Dispose(); archive = null; };
+        Closed += (_, _) => CloseArchives();
         pauseButton.Click += (_, _) =>
         {
             pauseRequested = !pauseRequested;
@@ -330,8 +334,8 @@ public sealed partial class MainWindow : Window
                     bool dir = (info.Attributes & FileAttributes.Directory) != 0;
                     return new FileEntry(info.FullName, info.Name, info.FullName, dir, dir ? null : (ulong)((FileInfo)info).Length, info.LastWriteTime);
                 }).ToList());
-                if (remember && Location.Length > 0) history.Push(Location);
-                archive?.Dispose(); archive = null; archiveEntries = []; archivePath = archivePrefix = "";
+                if (remember && Location.Length > 0) history.Push(CurrentLocation);
+                CloseArchives(); archivePrefix = "";
                 directory = fullPath; entries = loaded; ApplySort(); BuildList(); Address.Text = directory; Notice.IsOpen = false;
             }
             catch (Exception error) { ShowError(error.Message); Address.Text = Location; }
@@ -343,27 +347,56 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenArchive(string path, bool remember)
     {
-        NativeArchive? candidate = null;
-        IReadOnlyList<ArchiveEntry> loaded = [];
+        ArchiveSession? candidate = null;
         var result = await RunOperation("Открытие архива", job =>
         {
-            var opened = NativeArchive.Open(Path.GetFullPath(path), job);
-            candidate = opened.Archive;
-            if (candidate != null)
-            {
-                try { loaded = candidate.ReadEntries(job); }
-                catch (COMException error) { return new ArchiveResult(error.HResult, job.Issues); }
-            }
+            var opened = ArchiveSession.Open(path, job);
+            candidate = opened.Session;
             return opened.Result;
         }, showSuccess: false);
-        if (result?.HResult == 0 && candidate != null)
+        if (!closing && result?.HResult == 0 && candidate != null)
         {
-            if (remember && Location.Length > 0) history.Push(Location);
-            archive?.Dispose(); archive = candidate; archiveEntries = loaded;
-            archivePath = Path.GetFullPath(path); archivePrefix = "";
-            ShowArchiveFolder(); Notice.IsOpen = false;
+            if (remember && Location.Length > 0) history.Push(CurrentLocation);
+            CloseArchives(); archiveSession = candidate; archivePrefix = "";
+            ShowArchiveFolder();
         }
         else candidate?.Dispose();
+        UpdateStatus();
+    }
+
+    private void CloseArchives()
+    {
+        while (archiveSession != null)
+        {
+            var parent = archiveSession.Parent;
+            archiveSession.Dispose(); archiveSession = parent;
+        }
+    }
+
+    private async Task OpenNestedArchive(FileEntry item)
+    {
+        if (archiveSession == null || item.ArchiveIndex is not { } index) return;
+        var parent = archiveSession;
+        string parentFolder = archivePrefix;
+        ArchiveSession? candidate = null;
+        var result = await RunOperation("Открытие вложенного архива", job =>
+        {
+            var opened = parent.OpenChild(index, job, parentFolder);
+            candidate = opened.Session;
+            return opened.Result;
+        }, showSuccess: false, quietNotArchive: true);
+        if (!closing && result?.HResult == 0 && candidate != null)
+        {
+            history.Push(CurrentLocation);
+            archiveSession = candidate; archivePrefix = ""; ShowArchiveFolder();
+        }
+        else
+        {
+            candidate?.Dispose();
+            // Keep the slice's existing ordinary-file action until the editor
+            // lifecycle/commit UI is implemented. Only S_FALSE means not archive.
+            if (!closing && result?.HResult == 1) await Extract(false, [item]);
+        }
         UpdateStatus();
     }
 
@@ -394,8 +427,8 @@ public sealed partial class MainWindow : Window
     {
         if (archive != null)
         {
-            if (item.IsDirectory) { history.Push(Location); archivePrefix = item.FullPath; ShowArchiveFolder(); }
-            else await Extract(false, [item]);
+            if (item.IsDirectory) { history.Push(CurrentLocation); archivePrefix = item.FullPath; ShowArchiveFolder(); }
+            else await OpenNestedArchive(item);
         }
         else await Navigate(item.FullPath);
     }
@@ -403,10 +436,24 @@ public sealed partial class MainWindow : Window
     {
         if (archive != null && archivePrefix.Length > 0)
         {
-            history.Push(Location); string prefix = archivePrefix.TrimEnd('/'); int i = prefix.LastIndexOf('/'); archivePrefix = i < 0 ? "" : prefix[..(i + 1)]; ShowArchiveFolder();
+            history.Push(CurrentLocation); string prefix = archivePrefix.TrimEnd('/'); int i = prefix.LastIndexOf('/'); archivePrefix = i < 0 ? "" : prefix[..(i + 1)]; ShowArchiveFolder();
         }
-        else if (archive != null) await Navigate(Path.GetDirectoryName(archivePath)!);
-        else if (Directory.GetParent(directory) is { } parent) await Navigate(parent.FullName);
+        else if (archiveSession?.Parent is { } parent)
+        {
+            uint? selected = archiveSession.ParentIndex;
+            archivePrefix = archiveSession.ParentFolder;
+            archiveSession.Dispose(); archiveSession = parent; ShowArchiveFolder();
+            while (history.TryPeek(out var previous) && ReferenceEquals(previous.Session, parent) && previous.Prefix == archivePrefix) history.Pop();
+            if (selected is { } index)
+            {
+                var item = entries.FirstOrDefault(e => e.ArchiveIndex == index);
+                if (item != null) { list.SelectedItem = item; list.ScrollIntoView(item); }
+            }
+            list.Focus(FocusState.Programmatic);
+            UpdateStatus();
+        }
+        else if (archiveSession != null) await Navigate(Path.GetDirectoryName(archiveSession.RootPath)!);
+        else if (Directory.GetParent(directory) is { } folderParent) await Navigate(folderParent.FullName);
     }
 
     private async Task Extract(bool test, IEnumerable<FileEntry>? explicitItems = null)
@@ -420,7 +467,8 @@ public sealed partial class MainWindow : Window
         string destination = "";
         if (!test)
         {
-            var field = new TextBox { Text = Path.Combine(Path.GetDirectoryName(archivePath)!, Path.GetFileNameWithoutExtension(archivePath)), MinWidth = 380 };
+            string rootPath = archiveSession!.RootPath;
+            var field = new TextBox { Text = Path.Combine(Path.GetDirectoryName(rootPath)!, Path.GetFileNameWithoutExtension(rootPath)), MinWidth = 380 };
             AutomationProperties.SetName(field, "Папка назначения");
             var browse = new Button { Content = "Обзор…" };
             browse.Click += async (_, _) => { var picker = new FolderPicker(); picker.FileTypeFilter.Add("*"); WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this)); var folder = await picker.PickSingleFolderAsync(); if (folder != null) field.Text = folder.Path; };
@@ -439,7 +487,7 @@ public sealed partial class MainWindow : Window
         await RunOperation(test ? "Проверка архива" : "Извлечение", job => target.Extract(indices, destination, job, test));
     }
 
-    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true)
+    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true, bool quietNotArchive = false)
     {
         if (busy) return null;
         busy = true; UpdateStatus(); Notice.IsOpen = false;
@@ -474,7 +522,7 @@ public sealed partial class MainWindow : Window
             body.Children.Clear(); buttons.Children.Clear(); UpdateStatus();
         }
         if (closing) { Close(); return result; }
-        if (result != null && (showSuccess || !result.Succeeded))
+        if (result != null && (showSuccess || !result.Succeeded) && !(quietNotArchive && result.HResult == 1))
         {
             string heading = result.Cancelled ? "Операция отменена" : result.Succeeded ? "Операция завершена" : result.HResult == 0 ? "Завершено с ошибками" : "Не удалось завершить операцию";
             var lines = new List<string>();
@@ -590,13 +638,43 @@ public sealed partial class MainWindow : Window
     private async void OnParent(object sender, RoutedEventArgs e) { if (!busy) await Parent(); }
     private async void OnBack(object sender, RoutedEventArgs e)
     {
-        if (busy || history.Count == 0) return;
-        string target = history.Pop(); int split = target.IndexOf(" | ", StringComparison.Ordinal);
-        if (split >= 0 && archive != null && target[..split] == archivePath) { archivePrefix = target[(split + 3)..]; ShowArchiveFolder(); }
-        else if (split >= 0) { await OpenArchive(target[..split], false); if (archive != null && archivePath == target[..split]) { archivePrefix = target[(split + 3)..]; ShowArchiveFolder(); } }
-        else await Navigate(target, false);
+        if (busy || configuring) return;
+        while (history.TryPop(out var target))
+        {
+            if (target.Session is { IsClosed: false } session)
+            {
+                for (var level = archiveSession; level != null; level = level.Parent)
+                    if (ReferenceEquals(level, session))
+                    {
+                        while (!ReferenceEquals(archiveSession, session))
+                        {
+                            var parent = archiveSession!.Parent;
+                            archiveSession.Dispose(); archiveSession = parent;
+                        }
+                        archivePrefix = target.Prefix; ShowArchiveFolder(); list.Focus(FocusState.Programmatic); return;
+                    }
+            }
+            // Closed nested indices cannot be reinterpreted in a new root session.
+            if (target.Session?.Parent != null) continue;
+            if (target.Session != null)
+            {
+                await OpenArchive(target.Path, false);
+                if (archiveSession?.RootPath == target.Path) { archivePrefix = target.Prefix; ShowArchiveFolder(); }
+            }
+            else await Navigate(target.Path, false);
+            UpdateStatus(); return;
+        }
+        UpdateStatus();
     }
-    private async void OnRefresh(object sender, RoutedEventArgs e) { if (!busy) { if (archive != null) await OpenArchive(archivePath, false); else await Navigate(directory, false); } }
+    private async void OnRefresh(object sender, RoutedEventArgs e)
+    {
+        if (busy || configuring) return;
+        // A child is an owned snapshot; refreshing its view keeps its native
+        // identity and parent chain. Root refresh opens a new source session.
+        if (archiveSession?.Parent != null) ShowArchiveFolder();
+        else if (archiveSession != null) await OpenArchive(archiveSession.RootPath, false);
+        else await Navigate(directory, false);
+    }
     private async void OnExtract(object sender, RoutedEventArgs e) => await Extract(false);
     private async void OnTest(object sender, RoutedEventArgs e) => await Extract(true);
     private void OnSelectAll(object sender, RoutedEventArgs e) => list.SelectAll();

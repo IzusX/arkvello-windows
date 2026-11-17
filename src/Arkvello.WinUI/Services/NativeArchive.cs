@@ -91,6 +91,10 @@ public sealed class NativeArchive : SafeHandleZeroOrMinusOneIsInvalid
         int result = NativeApi.av_extract(this, job, selected, (uint)selected.Length, destination, test ? 1 : 0);
         return new(result, job.Issues);
     }
+    public ArchiveResult ExportItem(uint index, string output, ArchiveJob job) =>
+        new(NativeApi.av_export_item(this, job, index, output), job.Issues);
+    public ArchiveResult ReplaceItem(uint index, string replacement, string output, ArchiveJob job) =>
+        new(NativeApi.av_replace_item(this, job, index, replacement, output), job.Issues);
     protected override bool ReleaseHandle() { NativeApi.av_close(handle); return true; }
 }
 
@@ -117,4 +121,8 @@ internal static class NativeApi
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int av_list(NativeArchive session, ArchiveJob job);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     internal static extern int av_extract(NativeArchive session, ArchiveJob job, uint[] indices, uint count, string destination, int test);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern int av_export_item(NativeArchive session, ArchiveJob job, uint index, string output);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern int av_replace_item(NativeArchive session, ArchiveJob job, uint index, string replacement, string output);
 }

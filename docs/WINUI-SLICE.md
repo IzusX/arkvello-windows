@@ -39,9 +39,9 @@ build outputs remain ignored under `build/`, `bin/` and `obj/`.
 - Native WinUI main window following the approved menu/navigation/commands/list/
   status order. System caption, normal resize/snap, native dialogs and controls.
 - Real filesystem enumeration; editable folder/archive path; parent/back/refresh;
-  errors retain the previous valid location. Single archive session with folder
-  browsing, typed indices, names, sizes and modified times. No nested archive
-  or external-editor execution yet.
+  errors retain the previous valid location. Explicit archive session levels
+  retain parent/native item identity for nested browsing, names, sizes and
+  modified times. External-editor execution is not implemented yet.
 - Four stable virtualized list modes. Details has sort, resize/reorder header
   controls and horizontal overflow retaining all four initial columns. Header
   context commands provide width/order actions without a drag gesture.
@@ -143,9 +143,10 @@ milestone runs. Concrete remaining work:
    repeated password/error recovery, warnings/partial outcomes and decoder/thread
    lifetime. Preserve unsupported states explicitly; do not silently route to
    a backend with different semantics. Background/priority remains unimplemented.
-3. Prove nested/virtual archive identity and edit-back/temp/session close behavior
-   using an adapted Agent/folder boundary before adding tabs or expanding the
-   simple C# folder projection. Retain duplicate index identity.
+3. Nested session/index identity and Agent-backed staged edit-back now have the
+   bounded proof below. Finish external-editor lifetime, concurrent source/edit
+   conflict detection, atomic root commit/recovery, actual virtual/stream-first
+   cases and UI cancellation/close acceptance before declaring this gate closed.
 4. Check native light/dark/accent transitions, actual contrast themes, text scale,
    100/125/150/200% DPI and mixed-monitor transitions, constrained dialogs and
    assistive technology. Current 150% startup is not that matrix. Do not change
@@ -243,3 +244,53 @@ view. GridView tiles now have a uniform height independent of the first filename
 140×104 DIP for large icons, 220×64 DIP for small icons. Finite Grid slots reserve
 two 20-DIP text lines, with wrapping/ellipsis; a tooltip exposes the full name.
 Native item accessibility names retain the complete name and metadata.
+
+### Nested sessions and Agent update proof
+
+2026-11-17: `ArchiveSession` retains a parent session, exact parent native item
+index and parent folder for each nested level. A child owns one decoded regular
+temporary file. Returning up closes the child before deleting its owned file;
+parents remain open. Archive paths are display information, never identifiers
+for choosing a duplicate. Back history uses live session references; disposed
+nested indices are skipped instead of being reinterpreted in a different root.
+Nested refresh redraws the owned snapshot; root refresh reopens the source.
+
+The UI opens nested archives with a double click/Enter, and returns with Up,
+Backspace or Back. Up restores the selected child index in the parent folder.
+Unrecognized regular files retain the earlier extraction-dialog action; no
+external process/editor is launched. Default extraction output derives from the
+root filesystem path, never the logical nested display path.
+
+Two additive native calls export an exact item into a new caller-owned regular
+file and stage an exact-index replacement into a new archive. They refuse to
+overwrite existing output files. Directory/link/ADS items are not materialized
+as regular external files by this API. The write route uses CAgent folder/proxy
+index mapping and original UpdateOneFile, preserving the original item name.
+`StageReplacement` builds a nested update chain into separate artifacts, checking
+item names and testing every rewritten archive. It cannot overwrite the root.
+Temporary cleanup removes only the known owned file and its empty directory,
+without recursively deleting unexpected editor files or other contents.
+
+Backend checks passed against the production adapter/native DLL:
+
+- Plain replacement stays unencrypted; encrypted 7z replacement retains protected
+  headers and requires a password for the changed data.
+- Updating the second of two identically named TAR entries preserves the first.
+- Actual-write cancellation and cancellation before writing leave the original
+  readable/unchanged; existing output is never overwritten.
+- TAR → ZIP → TAR browsing and staged replacement survive reopening all levels.
+  The original root bytes stay unchanged; closed sessions clean their own files.
+- Failed/cancelled child opens preserve the parent session. Existing extraction,
+  prompt, pause/cancel, corruption and 100,000-entry listing checks also pass.
+
+Evidence: `build/agent-bridge-checks.log` and the generated `checks.json` path
+printed there. Release WinUI build passed with zero warnings/errors. Native
+pointer/keyboard acceptance of this new navigation is still to be recorded.
+
+The first update test exposed an incompatible `Z7_DEVICE_FILE` build define;
+matching native structure layouts fixed the heap corruption. The native library
+now explicitly excludes old FM/GUI objects, and CAgent receives session-owned
+codecs. See the revised [boundary decision](decisions/0002-working-slice-boundary.md).
+The full dedicated source build, arbitrary encrypted-format parameter fidelity,
+external editing UI, root commit/recovery and stage-3 accessibility/deployment
+gates remain open. Successful staging does not establish complete edit-back.

@@ -477,7 +477,7 @@ Z7_COM7F_IMF(CAgent::DoOperation2(
     ISequentialOutStream *outArchiveStream,
     const Byte *stateActions, const wchar_t *sfxModule, IFolderArchiveUpdateCallback *updateCallback100))
 {
-  return DoOperation(requestedPaths, processedPaths, g_CodecsObj, -1, outArchiveStream, stateActions, sfxModule, updateCallback100);
+  return DoOperation(requestedPaths, processedPaths, GetCodecs(), -1, outArchiveStream, stateActions, sfxModule, updateCallback100);
 }
 
 HRESULT CAgent::CommonUpdate(ISequentialOutStream *outArchiveStream,

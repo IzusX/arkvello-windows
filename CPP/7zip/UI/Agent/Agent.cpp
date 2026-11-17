@@ -1590,14 +1590,15 @@ Z7_COM7F_IMF(CAgentFolder::Extract(const UInt32 *indices,
 /////////////////////////////////////////
 // CAgent
 
-CAgent::CAgent():
+CAgent::CAgent(CCodecs *codecs):
     _proxy(NULL),
     _proxy2(NULL),
     _updatePathPrefix_is_AltFolder(false),
     _isDeviceFile(false),
     _isHashHandler(false),
     _progress_ArchiveOpenCallback_for_Open(NULL),
-    _progress_for_Open(NULL)
+    _progress_for_Open(NULL),
+    Codecs(codecs)
 {
 }
 
@@ -1656,10 +1657,20 @@ Z7_COM7F_IMF(CAgent::Open(
   }
   CArcInfoEx archiverInfo0, archiverInfo1;
 
-  RINOK(LoadGlobalCodecs())
+  if (!Codecs)
+  {
+    #ifdef ARKVELLO_NATIVE
+    // The new host must inject a private codec catalog. Do not fall through to
+    // FM's registry/plugin loader or its GUI hash handler dependency.
+    return E_UNEXPECTED;
+    #else
+    RINOK(LoadGlobalCodecs())
+    Codecs = g_CodecsObj;
+    #endif
+  }
 
   CObjectVector<COpenType> types;
-  if (!ParseOpenTypes(*g_CodecsObj, arcFormat, types))
+  if (!ParseOpenTypes(*Codecs, arcFormat, types))
     return S_FALSE;
 
   /*
@@ -1675,7 +1686,7 @@ Z7_COM7F_IMF(CAgent::Open(
 
   COpenOptions options;
   options.props = NULL;
-  options.codecs = g_CodecsObj;
+  options.codecs = Codecs;
   options.types = &types;
   CIntVector exl;
   options.excludedFormats = &exl;
@@ -1730,7 +1741,7 @@ Z7_COM7F_IMF(CAgent::ReOpen(IArchiveOpenCallback *openArchiveCallback))
 
   COpenOptions options;
   options.props = NULL;
-  options.codecs = g_CodecsObj;
+  options.codecs = Codecs;
   options.types = &incl;
   options.excludedFormats = &exl;
   options.stdInMode = false;
@@ -1912,7 +1923,7 @@ Z7_COM7F_IMF(CAgent::GetArcProp(UInt32 level, PROPID propID, PROPVARIANT *value)
         break;
       case kpidErrorType:
         if (_archiveLink.NonOpen_ErrorInfo.ErrorFormatIndex >= 0)
-          prop = g_CodecsObj->Formats[_archiveLink.NonOpen_ErrorInfo.ErrorFormatIndex].Name;
+          prop = Codecs->Formats[_archiveLink.NonOpen_ErrorInfo.ErrorFormatIndex].Name;
         break;
       case kpidErrorFlags:
       {
@@ -1939,7 +1950,7 @@ Z7_COM7F_IMF(CAgent::GetArcProp(UInt32 level, PROPID propID, PROPVARIANT *value)
       case kpidPath: prop = arc.Path; break;
       case kpidErrorType:
         if (arc.ErrorInfo.ErrorFormatIndex >= 0)
-          prop = g_CodecsObj->Formats[arc.ErrorInfo.ErrorFormatIndex].Name;
+          prop = Codecs->Formats[arc.ErrorInfo.ErrorFormatIndex].Name;
         break;
       case kpidErrorFlags:
       {

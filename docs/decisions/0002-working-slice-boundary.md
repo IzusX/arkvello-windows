@@ -57,19 +57,33 @@ path. No lookup through the user's installed 7-Zip, registry or current working
 directory. The codec DLL and bridge derive from the pinned upstream source.
 Optional plugin loading is not implemented by this slice.
 
-For a first build, the bridge links a static library of existing FM-build objects;
-the linker selects referenced Common/Windows/stream code. It does not instantiate
-FM windows or use the old presentation adapter. This is a temporary **build**
-coupling: a dedicated upstream source target must replace the broad object
-archive before regular application development/upstream updates. Upstream
-headers require a clean rebuild because the inherited nmake dependency tracking
-is incomplete. No upstream source was edited for this slice.
+The bridge still reuses FM-build objects, now selected by an explicit non-UI
+source whitelist in `scripts/native-object-list.ps1`. FM/GUI window objects are
+excluded, rather than merely relying on dead-code selection. Agent.cpp is
+compiled separately with `ARKVELLO_NATIVE` to prohibit its default global codec
+loader. All bridge/Agent compilation must match layout-affecting upstream
+defines, particularly `Z7_DEVICE_FILE`; a missing define caused heap corruption
+when first exercising UpdateOneFile, and was corrected and regression-tested.
+A dedicated source compilation target must still replace this temporary build
+coupling. Upstream headers require a clean rebuild because inherited nmake
+dependency tracking is incomplete.
+
+2026-11-17: the localized upstream delta adds optional instance codec injection
+to CAgent, retaining the original FM default loader. The bridge injects its
+session-owned catalog and directly reuses Agent's folder/proxy mapping and
+UpdateOneFile. Its folder comparator adapter has ordinal case-insensitive
+semantics and is not used for presentation sorting; broader folder migration
+must explicitly implement sorting preferences rather than inheriting this stub.
 
 The C# archive tree is a bounded projection of typed archive entries, retaining
-native indices and duplicate file identities. It does not establish the final
-nested/virtual-folder/edit-back model. Reuse Agent folder/proxy services where
-they preserve those semantics more cheaply; do not expand string-prefix
-navigation into an unreviewed replacement for all Agent behavior.
+native indices and duplicate file identities. The next bounded proof now retains
+explicit parent sessions and parent item indices for nested archives. Each child
+owns a decoded regular temporary file; no archive-controlled path is an output
+path. Stream-first/virtual storage remains open for performance work. Edit-back
+staging rewrites each level through Agent into new artifacts and validates the
+result, without mutating the root. Editor lifetime, conflict detection, durable
+recovery and committing back to the source are still required; this does not
+establish a complete virtual-folder/edit-back model.
 
 ## Evidence and consequence
 

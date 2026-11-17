@@ -24,4 +24,11 @@ AV_API int32_t av_open(const wchar_t *path, void *job, void **session);
 AV_API int32_t av_list(void *session, void *job);
 AV_API int32_t av_extract(void *session, void *job, const uint32_t *indices,
   uint32_t count, const wchar_t *destination, int test);
+// Materialize exactly one native index into a new caller-owned regular file.
+// No archive path is used as an output path. Neither call overwrites a file.
+AV_API int32_t av_export_item(void *session, void *job, uint32_t index, const wchar_t *output);
+// Reuse Agent's index-based UpdateOneFile; write a new archive, leaving the
+// source/session intact. The caller owns commit/recovery of this staged output.
+AV_API int32_t av_replace_item(void *session, void *job, uint32_t index,
+  const wchar_t *replacement, const wchar_t *output);
 AV_API void av_close(void *session);
