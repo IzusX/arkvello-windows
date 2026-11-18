@@ -52,7 +52,7 @@
       </Style>
       </ResourceDictionary>
     </Grid.Resources>
-    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="52"/><RowDefinition Height="50"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="28"/></Grid.RowDefinitions>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto" MinHeight="52"/><RowDefinition Height="Auto" MinHeight="50"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto" MinHeight="28"/></Grid.RowDefinitions>
     <MenuBar x:Name="Menus" Background="Transparent" VerticalAlignment="Top">
       <MenuBarItem Title="Файл">
         <MenuFlyoutItem Text="Открыть архив…" Click="OnOpenArchive"/>
@@ -60,13 +60,14 @@
         <MenuFlyoutItem Text="Проверить" Click="OnTest"/>
         <MenuFlyoutSeparator/><MenuFlyoutItem Text="Выход" Click="OnExit"/>
       </MenuBarItem>
-      <MenuBarItem Title="Правка"><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/></MenuBarItem>
+      <MenuBarItem Title="Правка"><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/><ToggleMenuFlyoutItem Text="Независимые отметки" Click="OnMarkMode"/><MenuFlyoutSeparator/><MenuFlyoutItem Text="Редактировать в Блокноте…" Click="OnEdit"/></MenuBarItem>
       <MenuBarItem Title="Вид">
         <MenuFlyoutItem Text="Таблица" Tag="Details" Click="OnView"/>
         <MenuFlyoutItem Text="Список" Tag="List" Click="OnView"/>
         <MenuFlyoutItem Text="Мелкие значки" Tag="SmallIcons" Click="OnView"/>
         <MenuFlyoutItem Text="Крупные значки" Tag="LargeIcons" Click="OnView"/>
         <MenuFlyoutSeparator/><MenuFlyoutItem Text="Обновить" Click="OnRefresh"/>
+        <MenuFlyoutItem Text="Столбцы…" Click="OnColumns"/>
         <MenuFlyoutSubItem x:Name="ScaleMenu" Text="Масштаб основного окна"/>
         <MenuFlyoutSubItem Text="Тема"><MenuFlyoutItem Text="Системная" Tag="Default" Click="OnTheme"/><MenuFlyoutItem Text="Светлая" Tag="Light" Click="OnTheme"/><MenuFlyoutItem Text="Тёмная" Tag="Dark" Click="OnTheme"/></MenuFlyoutSubItem>
       </MenuBarItem>
@@ -79,7 +80,7 @@
       <Button x:Name="BackButton" Style="{StaticResource NavigationButtonStyle}" Click="OnBack" ToolTipService.ToolTip="Назад (Alt+←)" AutomationProperties.Name="Назад"><IconSourceElement IconSource="{StaticResource FluentBack}" Width="20" Height="20"/></Button>
       <Button Grid.Column="1" Style="{StaticResource NavigationButtonStyle}" Click="OnParent" ToolTipService.ToolTip="На уровень вверх (Backspace)" AutomationProperties.Name="На уровень вверх"><IconSourceElement IconSource="{StaticResource FluentParent}" Width="20" Height="20"/></Button>
       <Button Grid.Column="2" Style="{StaticResource NavigationButtonStyle}" Click="OnRefresh" ToolTipService.ToolTip="Обновить (Ctrl+R)" AutomationProperties.Name="Обновить"><IconSourceElement IconSource="{StaticResource FluentRefresh}" Width="20" Height="20"/></Button>
-      <TextBox x:Name="Address" Grid.Column="3" Height="34" FontSize="14" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalContentAlignment="Center" KeyDown="OnAddressKeyDown" AutomationProperties.Name="Путь к папке или архиву"/>
+      <TextBox x:Name="Address" Grid.Column="3" MinHeight="34" FontSize="14" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalContentAlignment="Center" KeyDown="OnAddressKeyDown" AutomationProperties.Name="Путь к папке или архиву"/>
     </Grid>
     <Border Grid.Row="2" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
     <controls:FileCommandBar x:Name="Commands" Background="Transparent" DefaultLabelPosition="Right" IsOpen="False" IsDynamicOverflowEnabled="True" OverflowButtonVisibility="Auto" HorizontalAlignment="Stretch" Margin="16,0" VerticalAlignment="Center">

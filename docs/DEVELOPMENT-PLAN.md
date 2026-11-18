@@ -5,6 +5,9 @@ with existing C++ services, approved stage 2 composition and authorized stage 3.
 Stage 3 is in progress with a [runnable native slice](WINUI-SLICE.md); stages 4-8
 have not started. Initial slice boundaries are recorded in
 [decision 0002](decisions/0002-working-slice-boundary.md); release gates remain open.
+The 2026-11-18 [stage 3 validation record](STAGE3-VALIDATION.md) and
+[operation/recovery decision](decisions/0003-operation-ownership-and-recovery.md)
+record the expanded implementation and acceptance that remains unexecuted.
 See [decision 0001](decisions/0001-ui-stack.md).
 This plan supersedes the earlier sequence of extending the Win32 styling
 adapter to all dialogs. Product requirements are authoritative in

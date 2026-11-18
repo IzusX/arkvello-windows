@@ -1,12 +1,19 @@
 # Stage 3 — native WinUI working slice
 
 2026-11-16. The user approved the [stage 2 composition](INTERFACE-PROPOSAL.md)
-and authorized stage 3. **In progress; first runnable milestone.** This document
+and authorized stage 3. **In progress; expanded implementation, acceptance pending.** This document
 separates executed checks from gates still required before broad migration.
+The 2026-11-18 [validation record](STAGE3-VALIDATION.md) supersedes the older
+remaining-gates list below where implementation has since been added. It does
+not waive unexecuted native-input, accessibility or clean-machine checks.
 
 ## Run and build
 
-The current Release executable is:
+The self-contained development executable is:
+
+`build/portable-x64/Arkvello.exe`
+
+The ordinary framework-dependent developer output is:
 
 `src/Arkvello.WinUI/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/Arkvello.exe`
 
@@ -16,13 +23,19 @@ opens the user's home directory. This is a separate executable; the original
 
 Requirements: existing MSVC x64 tools/Windows SDK used by the original build,
 .NET SDK 10.0.401 (latest patch roll-forward), network access to the official
-NuGet feed for the initial locked restore. The runnable build currently requires
-the installed .NET 10 runtime. WinAppSDK is app-local; no installer or shell
+NuGet feed for the initial locked restore. The ordinary developer build requires
+the installed .NET 10 runtime; the portable development folder includes it.
+WinAppSDK is app-local in both; no installer or shell
 registration is executed. SDK 10.0.26100 is a build target; Windows 10/other
 Windows versions have not been validated.
 
 ```powershell
 .\scripts\build-winui.ps1
+# Self-contained folder; PowerShell 7:
+.\scripts\publish-winui.ps1
+# Application-owned verification, with disposable real input:
+.\scripts\prepare-stage3-fixtures.ps1
+.\scripts\test-stage3-client.ps1
 # Repeat backend checks, using only disposable fixtures under build/:
 $env:DOTNET_CLI_HOME = "$PWD\build\dotnet-home"
 $env:NUGET_PACKAGES = "$PWD\build\nuget"
@@ -42,12 +55,15 @@ build outputs remain ignored under `build/`, `bin/` and `obj/`.
 - Real filesystem enumeration; editable folder/archive path; parent/back/refresh;
   errors retain the previous valid location. Explicit archive session levels
   retain parent/native item identity for nested browsing, names, sizes and
-  modified times. External-editor execution is not implemented yet.
+  modified times. A bounded Notepad editor handoff, nested staging, conflict
+  checks and backed-up atomic root replacement are implemented; see decision 0003.
 - Four stable virtualized list modes. Details has sort, resize/reorder header
   controls and horizontal overflow retaining all four initial columns. Header
   context commands provide width/order actions without a drag gesture.
-  Normal WinUI pointer/Ctrl/Shift/keyboard selection; original alternative marks,
-  incremental typing, all columns and complete shortcuts are not implemented yet.
+  Native selection, independent current-item/mark mode and Insert marking,
+  format-provided property columns and keyboard width/order controls are
+  implemented. Full original shortcut/selection parity and actual assistive
+  technology acceptance are still unclaimed.
 - Select exact native entries, extract full paths to an explicit destination,
   or test without output. A selected directory expands to its original native
   indices. No selection targets all visible-folder entries. This does not
@@ -130,7 +146,12 @@ row-height/finite viewport and native panel virtualization must remain intact.
   and back, avoiding concurrent dialogs on one XamlRoot. Native completion is
   awaited before closing the operation view.
 
-## Remaining stage 3 gates
+## Earlier remaining stage 3 gates
+
+The following was the pre-2026-11-18 checkpoint, retained to make the scope
+auditable. Implemented changes and the smaller outstanding acceptance list
+are now in [STAGE3-VALIDATION.md](STAGE3-VALIDATION.md). These requirements have
+not been silently moved into later stages or declared passed by a build.
 
 Do not mark this stage complete or start broad migration merely because this
 milestone runs. Concrete remaining work:

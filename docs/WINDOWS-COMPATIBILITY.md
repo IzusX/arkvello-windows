@@ -27,3 +27,8 @@ x64 and Windows 11, including a clean machine:
 6. Future installer, Explorer integration and associations when implemented.
 
 Windows 10 support remains a target, not a completed compatibility certification.
+
+2026-11-18: a self-contained x64 development folder now includes .NET and
+WinAppSDK, generated app PRI/XBF resources and dependency notices. Local native
+client diagnostics confirm app-local coreclr.dll loading with an invalid
+DOTNET_ROOT. This does not establish a clean-machine or Windows 10 run.

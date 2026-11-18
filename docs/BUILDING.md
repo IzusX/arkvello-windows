@@ -1,5 +1,14 @@
 # Windows x64 development build
 
+For the current WinUI application, use [WINUI-SLICE.md](WINUI-SLICE.md).
+PowerShell 7 command `./scripts/publish-winui.ps1` builds the self-contained
+development folder at `build/portable-x64/`; keep that entire folder together.
+The script includes generated PRI/XBF resources, app-local .NET/WinAppSDK,
+dependency notices and a SHA-256 payload manifest. It installs/registers nothing.
+`prepare-stage3-fixtures.ps1` plus `test-stage3-client.ps1` run opt-in,
+application-owned layout/lifetime checks, not injected pointer/keyboard tests.
+See [current validation and its limits](STAGE3-VALIDATION.md).
+
 ## Prerequisites
 
 - Windows x64; Windows 11 is the intended UI target.

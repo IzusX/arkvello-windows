@@ -5,6 +5,15 @@ public partial class App : Application
     private Window? window;
     public App()
     {
+        if (Environment.GetCommandLineArgs().Contains("--diagnostics"))
+        {
+            DebugSettings.IsXamlResourceReferenceTracingEnabled = true;
+            DebugSettings.XamlResourceReferenceFailed += (_, e) =>
+            {
+                Directory.CreateDirectory(Path.GetFullPath("build"));
+                File.AppendAllText(Path.GetFullPath("build/winui-resource-error.txt"), e.Message + Environment.NewLine);
+            };
+        }
         UnhandledException += (_, e) => WriteStartupFailure(e.Exception);
         try { InitializeComponent(); }
         catch (Exception error) { WriteStartupFailure(error); throw; }

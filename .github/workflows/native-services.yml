@@ -8,8 +8,8 @@ on:
       - 'scripts/build-native*'
       - 'scripts/build-windows.cmd'
       - 'src/Arkvello.Native/**'
-      - 'src/Arkvello.WinUI/Services/NativeArchive.cs'
-      - 'src/Arkvello.WinUI/Services/ArchiveSession.cs'
+      - 'src/Arkvello.WinUI/**'
+      - 'scripts/publish-winui.ps1'
       - 'tests/Arkvello.BridgeChecks/**'
       - 'CPP/**'
       - 'C/**'
@@ -55,6 +55,13 @@ jobs:
           $checkExit = $LASTEXITCODE
           Get-Content build/native-source-checks.log
           exit $checkExit
+      - name: Publish self-contained development client and notices
+        shell: pwsh
+        run: |
+          & ./scripts/publish-winui.ps1 -SkipNative *> build/stage3-publish.log
+          $publishExit = $LASTEXITCODE
+          Get-Content build/stage3-publish.log
+          exit $publishExit
       - name: Upload service build and check evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -66,5 +73,8 @@ jobs:
             build/native-bridge/*.rsp
             build/native-bridge/*.map
             build/bridge-checks-*/checks.json
+            build/stage3-publish.log
+            build/portable-x64/payload-manifest.json
+            build/portable-x64/Arkvello.runtimeconfig.json
           if-no-files-found: warn
           retention-days: 14

@@ -2,14 +2,13 @@
 
 A fork of the official [7-Zip](https://www.7-zip.org/) File Manager, intended to
 preserve its functionality and familiar workflow while modernizing the interface
-for Windows 11. The Win32 prototype now styles the main window, Add to Archive
-and its nested Options dialog, with system/light/dark themes and a subtle tint
-from the Windows personalization accent. This prototype has unresolved selection
-and toolbar interaction bugs and has not passed visual acceptance. The approach
-is being replaced by a coherent C# + WinUI 3 interface with retained C++ services,
-as selected by the user on 2026-11-16. The user approved the new composition;
-a runnable native WinUI technical slice now browses directories/archives,
-extracts selected entries and handles prompts. It is not a complete FM replacement.
+for Windows 11. The current client uses C# + WinUI 3 with retained C++ archive
+services. Its technical slice browses real folders and nested archives, extracts
+exact native items, handles prompts and demonstrates safe editor update-back.
+A self-contained development folder is built with `scripts/publish-winui.ps1`.
+Stage 3 acceptance remains in progress; this is not a complete FM replacement.
+The earlier Win32 styling prototype and its unresolved interaction defects are
+documented separately and are not the current UI implementation.
 See [running it and remaining gates](docs/WINUI-SLICE.md) and the
 [revised product brief](PRODUCT.md).
 
@@ -23,6 +22,8 @@ is developed in a separate repository.
 - [Accepted UI stack](docs/decisions/0001-ui-stack.md)
 - [Runnable WinUI slice, validation and limitations](docs/WINUI-SLICE.md)
 - [Initial native boundary and list decision](docs/decisions/0002-working-slice-boundary.md)
+- [Operation ownership, virtual input and edit recovery](docs/decisions/0003-operation-ownership-and-recovery.md)
+- [Stage 3 validation and outstanding acceptance](docs/STAGE3-VALIDATION.md)
 - [Stage 2 interface proposal and full capability placement](docs/INTERFACE-PROPOSAL.md)
 - [Current interactive design study](design/stage2/README.md)
 - [Build and validation](docs/BUILDING.md)
