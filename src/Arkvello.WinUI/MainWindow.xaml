@@ -45,6 +45,27 @@
         <Setter Property="CornerRadius" Value="4"/>
         <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
       </Style>
+      <Style x:Key="PanelAddressStyle" TargetType="TextBox">
+        <Setter Property="MinHeight" Value="34"/><Setter Property="FontSize" Value="14"/>
+        <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+      </Style>
+      <Style x:Key="PanelStatusStyle" TargetType="Border">
+        <Setter Property="BorderBrush" Value="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+        <Setter Property="BorderThickness" Value="0,1,0,0"/><Setter Property="Padding" Value="16,4"/>
+      </Style>
+      <Style x:Key="PanelDividerStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource DividerStrokeColorDefaultBrush}"/>
+      </Style>
+      <Style x:Key="ActivePanelLineStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource SystemControlHighlightAccentBrush}"/>
+        <Setter Property="Height" Value="2"/><Setter Property="VerticalAlignment" Value="Bottom"/>
+      </Style>
+      <Style x:Key="PanelThumbStyle" TargetType="Thumb">
+        <Setter Property="Template">
+          <Setter.Value><ControlTemplate TargetType="Thumb"><Border Background="Transparent"/></ControlTemplate></Setter.Value>
+        </Setter>
+      </Style>
       <Style TargetType="ListViewItem">
         <Setter Property="MinHeight" Value="28"/><Setter Property="Height" Value="28"/>
         <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/>
@@ -71,14 +92,16 @@
         <MenuFlyoutItem x:Name="ClipboardCopyMenu" Text="Копировать" KeyboardAcceleratorTextOverride="Ctrl+C" Click="OnClipboardCopy"/>
         <MenuFlyoutItem x:Name="ClipboardCutMenu" Text="Вырезать" KeyboardAcceleratorTextOverride="Ctrl+X" Click="OnClipboardCut"/>
         <MenuFlyoutItem x:Name="PasteMenu" Text="Вставить" KeyboardAcceleratorTextOverride="Ctrl+V" Click="OnPaste"/>
-        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/><ToggleMenuFlyoutItem Text="Независимые отметки" Click="OnMarkMode"/><MenuFlyoutSeparator/><MenuFlyoutItem Text="Редактировать в Блокноте…" Click="OnEdit"/>
+        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/><ToggleMenuFlyoutItem x:Name="MarkModeMenu" Text="Независимые отметки" Click="OnMarkMode"/><MenuFlyoutSeparator/><MenuFlyoutItem Text="Редактировать в Блокноте…" Click="OnEdit"/>
       </MenuBarItem>
       <MenuBarItem Title="Вид">
         <MenuFlyoutItem Text="Таблица" Tag="Details" Click="OnView"/>
         <MenuFlyoutItem Text="Список" Tag="List" Click="OnView"/>
         <MenuFlyoutItem Text="Мелкие значки" Tag="SmallIcons" Click="OnView"/>
         <MenuFlyoutItem Text="Крупные значки" Tag="LargeIcons" Click="OnView"/>
-        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Обновить" Click="OnRefresh"/>
+        <MenuFlyoutSeparator/>
+        <ToggleMenuFlyoutItem x:Name="TwoPanelsMenu" Text="Две панели" KeyboardAcceleratorTextOverride="F9" Click="OnTwoPanels"/>
+        <MenuFlyoutItem Text="Обновить" Click="OnRefresh"/>
         <MenuFlyoutItem Text="Столбцы…" Click="OnColumns"/>
         <MenuFlyoutSubItem x:Name="ScaleMenu" Text="Масштаб основного окна"/>
         <MenuFlyoutSubItem Text="Тема"><MenuFlyoutItem Text="Системная" Tag="Default" Click="OnTheme"/><MenuFlyoutItem Text="Светлая" Tag="Light" Click="OnTheme"/><MenuFlyoutItem Text="Тёмная" Tag="Dark" Click="OnTheme"/></MenuFlyoutSubItem>
@@ -87,13 +110,7 @@
       <MenuBarItem Title="Сервис" IsEnabled="False"/>
       <MenuBarItem Title="Справка"><MenuFlyoutItem Text="О технической сборке" Click="OnAbout"/></MenuBarItem>
     </MenuBar>
-    <Grid x:Name="Navigation" Grid.Row="1" Padding="16,8" ColumnSpacing="8">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <Button x:Name="BackButton" Style="{StaticResource NavigationButtonStyle}" Click="OnBack" ToolTipService.ToolTip="Назад (Alt+←)" AutomationProperties.Name="Назад"><IconSourceElement IconSource="{StaticResource FluentBack}" Width="20" Height="20"/></Button>
-      <Button Grid.Column="1" Style="{StaticResource NavigationButtonStyle}" Click="OnParent" ToolTipService.ToolTip="На уровень вверх (Backspace)" AutomationProperties.Name="На уровень вверх"><IconSourceElement IconSource="{StaticResource FluentParent}" Width="20" Height="20"/></Button>
-      <Button Grid.Column="2" Style="{StaticResource NavigationButtonStyle}" Click="OnRefresh" ToolTipService.ToolTip="Обновить (Ctrl+R)" AutomationProperties.Name="Обновить"><IconSourceElement IconSource="{StaticResource FluentRefresh}" Width="20" Height="20"/></Button>
-      <TextBox x:Name="Address" Grid.Column="3" MinHeight="34" FontSize="14" Background="{ThemeResource ControlFillColorDefaultBrush}" VerticalContentAlignment="Center" KeyDown="OnAddressKeyDown" AutomationProperties.Name="Путь к папке или архиву"/>
-    </Grid>
+    <Grid x:Name="NavigationBand" Grid.Row="1"/>
     <Border Grid.Row="2" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
     <controls:FileCommandBar x:Name="Commands" Background="Transparent" DefaultLabelPosition="Right" IsOpen="False" IsDynamicOverflowEnabled="True" OverflowButtonVisibility="Auto" HorizontalAlignment="Stretch" Margin="16,0" VerticalAlignment="Center">
       <AppBarButton Label="Добавить" IsEnabled="False" ToolTipService.ToolTip="Создание архивов — следующий этап"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentAdd}"/></AppBarButton.Icon></AppBarButton>
@@ -111,10 +128,8 @@
     </controls:FileCommandBar>
     </Border>
     <InfoBar x:Name="Notice" Grid.Row="3" IsOpen="False" IsClosable="True" Severity="Error"/>
-    <Grid x:Name="ListHost" Grid.Row="4"/>
-    <Border Grid.Row="5" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" Padding="16,4">
-      <TextBlock x:Name="Status" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.LiveSetting="Polite"/>
-    </Border>
+    <Grid x:Name="ListBand" Grid.Row="4"/>
+    <Grid x:Name="StatusBand" Grid.Row="5" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"/>
   </Grid>
   </Viewbox>
   </Grid>

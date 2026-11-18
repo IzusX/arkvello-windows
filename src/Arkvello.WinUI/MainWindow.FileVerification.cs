@@ -104,12 +104,127 @@ public sealed partial class MainWindow
             }
             await OpenArchive(Path.Combine(AppContext.BaseDirectory, "7z.dll"), false);
             Record("archive context cannot enable filesystem mutations", archiveSession != null && !FilesystemReady && !CopyToButton.IsEnabled && !MoveToButton.IsEnabled && !DeleteButton.IsEnabled && !RenameMenu.IsEnabled);
+            await VerifyPanels(output, fixture, renamedPath, target, Record);
         }
         catch (Exception error) { results.Add(new { name = "unexpected failure", passed = false, error = error.ToString() }); Environment.ExitCode = 1; }
         finally
         {
             File.WriteAllText(Path.Combine(output, "client-checks.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
             RequestClose();
+        }
+    }
+
+    private async Task VerifyPanels(string output, string fixture, string source, string destination, Action<string, bool> record)
+    {
+        var left = panels[0];
+        var right = panels[1];
+        // The inner archive is a real PE member of a temporary TAR. Closing the
+        // panel would release its temporary file and break the retained session.
+        string containerPath = Path.Combine(fixture, "nested.tar");
+        using (var tar = new System.Formats.Tar.TarWriter(File.Create(containerPath)))
+            tar.WriteEntry(left.ArchiveSession!.RootPath, "inner.dll");
+        await OpenArchive(containerPath, false);
+        var outer = left.ArchiveSession!;
+        await OpenNestedArchive(left.Entries.Single(e => e.Name == "inner.dll"));
+        var leftArchive = left.ArchiveSession!;
+        record("left pane opens an actual nested archive with its own temporary file",
+            leftArchive.Parent == outer && File.Exists(leftArchive.PhysicalPath));
+        await SetTwoPanels(true);
+        await Task.Delay(150);
+        record("two independently laid out lists with first-use filesystem path",
+            twoPanels && right.Directory == Path.GetDirectoryName(leftArchive.RootPath) &&
+            left.List.ActualWidth > 0 && right.List.ActualWidth > 0 &&
+            left.List != right.List && left.ActiveLine.Visibility == Visibility.Visible);
+
+        ActivatePanel(right);
+        await Navigate(destination);
+        await GoBack();
+        record("right navigation and back leave the left archive open",
+            right.Directory == Path.GetDirectoryName(leftArchive.RootPath) && right.History.Count == 0 &&
+            left.ArchiveSession == leftArchive && !leftArchive.IsClosed);
+        await OpenArchive(leftArchive.RootPath, true);
+        var rightArchive = right.ArchiveSession;
+        record("opening the same archive twice creates separate sessions",
+            rightArchive != null && rightArchive.Identity != leftArchive.Identity && !leftArchive.IsClosed);
+
+        await SetTwoPanels(false);
+        record("single view keeps the active right pane and suspends left in place",
+            right.ListHost.Visibility == Visibility.Visible && Grid.GetColumn(right.ListHost) == 0 &&
+            left.ListHost.Visibility == Visibility.Collapsed && !leftArchive.IsClosed && right.ArchiveSession == rightArchive);
+        await SetTwoPanels(true);
+        record("reopening split retains both sessions and restores visual order",
+            Grid.GetColumn(left.ListHost) == 0 && Grid.GetColumn(right.ListHost) == 2 &&
+            left.ArchiveSession == leftArchive && leftArchive.Parent == outer && File.Exists(leftArchive.PhysicalPath) &&
+            right.ArchiveSession == rightArchive && rightArchive is { IsClosed: false });
+
+        await Navigate(destination);
+        record("leaving one archive releases only its own session",
+            rightArchive is { IsClosed: true } && !leftArchive.IsClosed && right.Directory == destination);
+        view = "SmallIcons";
+        right.Columns[0] = right.Columns[0] with { Width = 240 };
+        BuildList();
+        ActivatePanel(left);
+        record("views and column widths are owned by each pane",
+            left.View == "Details" && left.Columns[0].Width != right.Columns[0].Width && right.List is GridView);
+        await Navigate(fixture);
+        record("navigating away closes the owned nested chain and its temporary file",
+            leftArchive.IsClosed && outer.IsClosed && !File.Exists(leftArchive.PhysicalPath));
+        var row = left.Entries.Single(e => e.FullPath == source);
+        left.List.SelectedItem = row;
+        left.Current = row;
+        FocusFileList();
+        await Task.Delay(150);
+        record("filesystem transfer defaults to the other pane's directory",
+            activePanel == left && OtherFilesystemDirectory == destination && CopyToButton.IsEnabled);
+
+        var result = await TransferFiles([source], OtherFilesystemDirectory, move: false);
+        string copied = Path.Combine(destination, Path.GetFileName(source));
+        record("copy updates both lists and keeps source selection",
+            result?.Succeeded == true && File.ReadAllText(copied) == File.ReadAllText(source) &&
+            right.Entries.Any(e => e.FullPath == copied) && left.List.SelectedItem is Models.FileEntry marked && marked.FullPath == source);
+        ActivatePanel(right);
+        right.List.SelectedItem = right.Entries.Single(e => e.FullPath == copied);
+        await NavigateDirectory(left, Path.Combine(fixture, "move-destination"), remember: true);
+        record("passive navigation preserves active right selection and commands",
+            activePanel == right && right.List.SelectedItems.Count == 1 && CopyToButton.IsEnabled);
+        string moved = Path.Combine(OtherFilesystemDirectory, "cross-panel");
+        Directory.CreateDirectory(moved);
+        await NavigateDirectory(left, moved, remember: true);
+        result = await TransferFiles([copied], OtherFilesystemDirectory, move: true);
+        record("move removes source from right and appears in left",
+            result?.Succeeded == true && !File.Exists(copied) && right.Entries.All(e => e.FullPath != copied) &&
+            left.Entries.Any(e => e.FullPath == Path.Combine(moved, Path.GetFileName(source))));
+
+        var previousSize = AppWindow.Size;
+        AppWindow.Resize(new((int)(546 * Root.XamlRoot.RasterizationScale), previousSize.Height));
+        await Task.Delay(180);
+        record("narrow window keeps both path fields and both list viewports usable",
+            left.Address.ActualWidth > 64 && right.Address.ActualWidth > 64 &&
+            left.List.ActualWidth > 220 && right.List.ActualWidth > 220);
+        AppWindow.Resize(previousSize);
+        await Task.Delay(180);
+        await NavigateDirectory(right, fixture, remember: false);
+        FocusFileList();
+        right.View = "Details";
+        BuildList(right);
+        foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
+        {
+            WindowHost.RequestedTheme = theme;
+            RefreshColors();
+            await Task.Delay(100);
+            ResizePanels(-100);
+            ListBand.UpdateLayout();
+            record($"split widths align across path, list and status in {theme}",
+                left.ListHost.ActualWidth > 0 && right.ListHost.ActualWidth > left.ListHost.ActualWidth &&
+                Math.Abs(left.Navigation.ActualWidth - left.ListHost.ActualWidth) < 1 &&
+                Math.Abs(right.StatusHost.ActualWidth - right.ListHost.ActualWidth) < 1);
+            var bitmap = new RenderTargetBitmap();
+            await bitmap.RenderAsync(WindowHost);
+            var pixels = await bitmap.GetPixelsAsync();
+            using var file = File.Open(Path.Combine(output, $"{theme}-panels.png"), FileMode.Create);
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, file.AsRandomAccessStream());
+            encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels.ToArray());
+            await encoder.FlushAsync();
         }
     }
 }

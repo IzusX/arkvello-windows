@@ -5,6 +5,34 @@ next stage after receiving the stage 3 report. Its outstanding real-input,
 accessibility, DPI and clean-machine gates remain open. This record describes
 the first complete filesystem operation path, not completion of all stage 4.
 
+## Two panels
+
+`Вид → Две панели` (F9) opens a second list. Click either list or path to
+select the pane for the shared toolbar and menus. Tab switches panes from the
+file list. Shift+Tab leaves the list through normal keyboard navigation.
+Drag the divider to adjust widths, or focus it and use the arrow keys. Home
+and double-click reset the split.
+
+Each pane owns its address, back history, current item, marks, view, sorting,
+columns, status, and nested archive chain. F9 keeps the active pane visible
+when switching to one list. It retains the other pane's controls and archive
+handles until that pane navigates away or the window closes.
+
+F5/F6 suggest the other pane's filesystem directory, with an editable
+destination. Shift+F5/F6 suggest the current directory. The extraction dialog
+also suggests the other filesystem directory when available. Transfers refresh
+both visible filesystem lists. With focus in a filesystem list, Alt+Up opens
+the current directory in the other pane. Alt+Left/Right send the focused folder
+there. The Back button remains available independently in each pane.
+
+The current client suite passed 39 checks, including 16 new split-view
+checks with real files and a TAR containing a nested archive. They cover
+independent navigation, archive lifetime on hide/show, per-pane view and columns,
+copy and move in both directions, a narrow window, and aligned bands in both
+themes. See [client evidence](validation/stage4-panels.json).
+The tests invoke application code. Real keyboard gestures, divider dragging,
+and drag/drop with Explorer still need desktop acceptance.
+
 ## Runnable result
 
 `build/portable-x64/Arkvello.exe`, with the entire adjacent folder. Native ABI 3.
@@ -93,11 +121,11 @@ are not silently removed from the inventory. Copy replacement is not atomic;
 already performed work is not rolled back on cancellation. Plain-file recognition
 currently inherits the slice's full source hashing cost before shell handoff.
 
-Remaining stage 4 work includes two independent panels and transfer/focus state,
-complete selection/mask/incremental typing/shortcut behavior, shell file icons and
-overlays, filesystem column options, persistent introduced preferences and path/
-destination histories. Stage 3 outstanding acceptance and Windows 10/clean-machine
-checks also remain. No full stage completion, parity, installer or release is claimed.
+Remaining stage 4 work includes desktop acceptance for both panes, full selection
+and shortcut parity, masks and incremental typing, shell file icons and overlays,
+filesystem column options, persistent preferences and path/destination histories.
+Split width and pane contents are retained within the current window session.
+Stage 3 acceptance and Windows 10 and clean-machine checks also remain open.
 
 ## Reproduce
 

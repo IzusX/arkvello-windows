@@ -1,0 +1,158 @@
+[
+  {
+    "name": "filesystem commands enabled in directory",
+    "passed": true
+  },
+  {
+    "name": "inline editor contains the real name and selects its stem",
+    "passed": true
+  },
+  {
+    "name": "invalid inline rename keeps editor input and original",
+    "passed": true
+  },
+  {
+    "name": "inline collision keeps both originals and editor",
+    "passed": true
+  },
+  {
+    "name": "inline commit refreshes selection and file bytes",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in Details",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in Details",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in List",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in List",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "filesystem operation selection uses marks before caret",
+    "passed": true
+  },
+  {
+    "name": "filesystem refresh retains marks and independent caret",
+    "passed": true
+  },
+  {
+    "name": "StorageItems paste uses real upstream copy without system clipboard",
+    "passed": true
+  },
+  {
+    "name": "outbound delayed drag provider supplies the exact storage item",
+    "passed": true
+  },
+  {
+    "name": "StorageItems move paste retains bytes and removes only source",
+    "passed": true
+  },
+  {
+    "name": "text paste cannot invoke a file operation",
+    "passed": true
+  },
+  {
+    "name": "plain file reaches explicit non-archive result without launching an app",
+    "passed": true
+  },
+  {
+    "name": "filesystem controls render in Light",
+    "passed": true
+  },
+  {
+    "name": "filesystem controls render in Dark",
+    "passed": true
+  },
+  {
+    "name": "archive context cannot enable filesystem mutations",
+    "passed": true
+  },
+  {
+    "name": "left pane opens an actual nested archive with its own temporary file",
+    "passed": true
+  },
+  {
+    "name": "two independently laid out lists with first-use filesystem path",
+    "passed": true
+  },
+  {
+    "name": "right navigation and back leave the left archive open",
+    "passed": true
+  },
+  {
+    "name": "opening the same archive twice creates separate sessions",
+    "passed": true
+  },
+  {
+    "name": "single view keeps the active right pane and suspends left in place",
+    "passed": true
+  },
+  {
+    "name": "reopening split retains both sessions and restores visual order",
+    "passed": true
+  },
+  {
+    "name": "leaving one archive releases only its own session",
+    "passed": true
+  },
+  {
+    "name": "views and column widths are owned by each pane",
+    "passed": true
+  },
+  {
+    "name": "navigating away closes the owned nested chain and its temporary file",
+    "passed": true
+  },
+  {
+    "name": "filesystem transfer defaults to the other pane\u0027s directory",
+    "passed": true
+  },
+  {
+    "name": "copy updates both lists and keeps source selection",
+    "passed": true
+  },
+  {
+    "name": "passive navigation preserves active right selection and commands",
+    "passed": true
+  },
+  {
+    "name": "move removes source from right and appears in left",
+    "passed": true
+  },
+  {
+    "name": "narrow window keeps both path fields and both list viewports usable",
+    "passed": true
+  },
+  {
+    "name": "split widths align across path, list and status in Light",
+    "passed": true
+  },
+  {
+    "name": "split widths align across path, list and status in Dark",
+    "passed": true
+  }
+]

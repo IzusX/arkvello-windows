@@ -7,7 +7,7 @@ namespace Arkvello;
 
 public sealed partial class MainWindow
 {
-    private readonly Dictionary<(Guid Session, uint Property), IReadOnlyDictionary<uint, ArchiveProperty>> propertyCache = [];
+    private Dictionary<(Guid Session, uint Property), IReadOnlyDictionary<uint, ArchiveProperty>> propertyCache => activePanel.Properties;
     private uint[] SelectedProperties => columns.Where(c => c.Property.StartsWith("Properties[", StringComparison.Ordinal)).Select(c => uint.Parse(c.Property[11..^1], System.Globalization.CultureInfo.InvariantCulture)).ToArray();
     private static ArchiveResult LoadSessionColumns(ArchiveSession session, uint[] selected, ArchiveJob job,
         Dictionary<uint, IReadOnlyDictionary<uint, ArchiveProperty>> loaded)

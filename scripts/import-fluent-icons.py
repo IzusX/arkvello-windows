@@ -43,7 +43,7 @@ resources.append('</ResourceDictionary>')
 (root / 'Icons.xaml').write_text('\n'.join(resources) + '\n', encoding='utf-8')
 code = ['// Generated from the pinned Fluent SVGs; see Assets/Fluent/manifest.json.',
         'namespace Arkvello.Controls;', 'internal static class FluentItemPaths', '{']
-for key in ['Folder', 'File', 'FolderLarge', 'FileLarge']:
+for key in ['Folder', 'File', 'FolderLarge', 'FileLarge', 'Back', 'Parent', 'Refresh']:
     code.append(f'    public const string {key} = "{manifest["icons"][key]["data"]}";')
 code.append('}')
 (root.parents[1] / 'Controls/FluentItemPaths.cs').write_text('\n'.join(code) + '\n', encoding='utf-8')

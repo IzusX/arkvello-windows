@@ -12,8 +12,8 @@ namespace Arkvello;
 
 public sealed partial class MainWindow
 {
-    private bool markMode;
-    private FileEntry? lastCurrentItem;
+    private bool markMode { get => activePanel.MarkMode; set => activePanel.MarkMode = value; }
+    private FileEntry? lastCurrentItem { get => activePanel.Current; set => activePanel.Current = value; }
     private FileEntry? CurrentItem()
     {
         for (var source = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
@@ -21,7 +21,7 @@ public sealed partial class MainWindow
             if (source is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container && list.ItemFromContainer(container) is FileEntry item) return item;
         return entries.FirstOrDefault(e => e.Identity == lastCurrentItem?.Identity) ?? list.SelectedItem as FileEntry;
     }
-    private void ConfigureContextMenu()
+    private void ConfigureContextMenu(PanelState pane, ListViewBase list)
     {
         var menu = new MenuFlyout();
         var open = new MenuFlyoutItem { Text = "Открыть", KeyboardAcceleratorTextOverride = "Enter" };
@@ -42,6 +42,7 @@ public sealed partial class MainWindow
         menu.Items.Add(new MenuFlyoutSeparator()); menu.Items.Add(refresh); menu.Items.Add(properties);
         menu.Opening += (_, _) =>
         {
+            if (!ActivatePanel(pane)) return;
             var item = CurrentItem(); bool ready = !busy && !configuring;
             open.IsEnabled = ready && item != null;
             edit.IsEnabled = ready && archiveSession != null && item is { IsDirectory: false, ArchiveIndex: not null };
@@ -51,9 +52,13 @@ public sealed partial class MainWindow
             rename.IsEnabled = FilesystemReady && item != null; paste.IsEnabled = folder.IsEnabled = FilesystemReady;
         };
         list.ContextFlyout = menu;
-        list.GotFocus += (_, _) => { if (CurrentItem() is { } item) lastCurrentItem = item; };
+        list.GotFocus += (_, _) =>
+        {
+            if (ActivatePanel(pane) && CurrentItem() is { } item) { pane.Current = item; UpdateFileCommands(); }
+        };
         list.RightTapped += (_, e) =>
         {
+            if (!ActivatePanel(pane)) return;
             for (var source = e.OriginalSource as DependencyObject; source != null && !ReferenceEquals(source, list); source = VisualTreeHelper.GetParent(source))
                 if (source is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container && list.ItemFromContainer(container) is FileEntry item)
                 {
@@ -63,7 +68,7 @@ public sealed partial class MainWindow
         };
         list.PreviewKeyDown += async (_, e) =>
         {
-            if (busy || configuring || renameBox != null) return;
+            if (pane != activePanel || busy || configuring || renameBox != null) return;
             if (e.Key == VirtualKey.F4) { e.Handled = true; await EditCurrent(); }
             if (e.Key == VirtualKey.Insert && !KeyDown(VirtualKey.Control) && !KeyDown(VirtualKey.Shift) && CurrentItem() is { } current)
             {
