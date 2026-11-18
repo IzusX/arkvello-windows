@@ -74,6 +74,14 @@ Implemented additions:
    `coreclr.dll` from its own deployment folder. No installed runtime was removed.
    This proves app-local selection on this machine, not a clean VM startup.
 
+Fresh-runner CI for code commit `96e3a6c` also passed:
+[Native archive services, run 44227991252](https://github.com/IzusX/arkvello-windows/actions/runs/44227991252).
+It independently built the services without old FM/GUI outputs, passed all
+99 backend checks and published the self-contained WinUI folder with zero
+warnings/errors. This CI job did not run the desktop client diagnostic or a
+screen reader. Its uploaded artifacts include the build/test logs and payload
+manifest/runtime configuration.
+
 Eight fixture-only RenderTargetBitmap images are under the ignored evidence
 directory. They were visually inspected in light Details/dark Large Icons.
 That API omits the system caption/backdrop and has composition limitations;
@@ -114,10 +122,14 @@ No Windows Sandbox/VM launcher was available in this environment.
 3. A clean Windows end-user environment with no developer SDK/global runtime,
    full-folder deployment and missing dependency behavior. CI compilation and
    local app-root CLR selection are useful evidence but cannot substitute for it.
-4. Full operation-wide background/priority parity is not implemented; the current
-   toggle explicitly covers the primary worker thread. Before claiming original
-   background behavior, validate a complete worker boundary or another route
-   that also covers codec threads and I/O. Native faults remain in-process.
+
+The process/priority/session ownership decision required by stage 3 is recorded
+in decision 0003: retain serialized in-process services and a dedicated worker;
+the current priority toggle explicitly covers that primary worker only.
+Full operation-wide background/priority parity remains part of the original
+stage 5 archive-workflow requirement, not a feature claimed by this technical
+slice. Before claiming it, validate a complete worker boundary or another route
+covering codec threads and I/O. Native faults remain in-process.
 
 General editor configuration, automatic recovery discovery, complete archive
 parameters, original selection/shortcut parity and broader capability migration
