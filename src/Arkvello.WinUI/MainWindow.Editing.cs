@@ -31,7 +31,15 @@ public sealed partial class MainWindow
         var extract = new MenuFlyoutItem { Text = "Извлечь…" }; extract.Click += OnExtract;
         var refresh = new MenuFlyoutItem { Text = "Обновить", KeyboardAcceleratorTextOverride = "Ctrl+R" }; refresh.Click += OnRefresh;
         var properties = new MenuFlyoutItem { Text = "Столбцы…" }; properties.Click += OnColumns;
-        menu.Items.Add(open); menu.Items.Add(edit); menu.Items.Add(extract); menu.Items.Add(new MenuFlyoutSeparator()); menu.Items.Add(refresh); menu.Items.Add(properties);
+        var copy = new MenuFlyoutItem { Text = "Копировать", KeyboardAcceleratorTextOverride = "Ctrl+C" }; copy.Click += OnClipboardCopy;
+        var cut = new MenuFlyoutItem { Text = "Вырезать", KeyboardAcceleratorTextOverride = "Ctrl+X" }; cut.Click += OnClipboardCut;
+        var paste = new MenuFlyoutItem { Text = "Вставить", KeyboardAcceleratorTextOverride = "Ctrl+V" }; paste.Click += OnPaste;
+        var rename = new MenuFlyoutItem { Text = "Переименовать", KeyboardAcceleratorTextOverride = "F2" }; rename.Click += OnRename;
+        var delete = new MenuFlyoutItem { Text = "Удалить…", KeyboardAcceleratorTextOverride = "Delete" }; delete.Click += OnDelete;
+        var folder = new MenuFlyoutItem { Text = "Создать папку…", KeyboardAcceleratorTextOverride = "F7" }; folder.Click += OnNewFolder;
+        menu.Items.Add(open); menu.Items.Add(edit); menu.Items.Add(extract); menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(copy); menu.Items.Add(cut); menu.Items.Add(paste); menu.Items.Add(rename); menu.Items.Add(delete); menu.Items.Add(folder);
+        menu.Items.Add(new MenuFlyoutSeparator()); menu.Items.Add(refresh); menu.Items.Add(properties);
         menu.Opening += (_, _) =>
         {
             var item = CurrentItem(); bool ready = !busy && !configuring;
@@ -39,6 +47,8 @@ public sealed partial class MainWindow
             edit.IsEnabled = ready && archiveSession != null && item is { IsDirectory: false, ArchiveIndex: not null };
             extract.IsEnabled = ready && archiveSession != null;
             refresh.IsEnabled = ready; properties.IsEnabled = ready && archiveSession != null;
+            copy.IsEnabled = cut.IsEnabled = delete.IsEnabled = FilesystemReady && OperatedFiles().Length > 0;
+            rename.IsEnabled = FilesystemReady && item != null; paste.IsEnabled = folder.IsEnabled = FilesystemReady;
         };
         list.ContextFlyout = menu;
         list.GotFocus += (_, _) => { if (CurrentItem() is { } item) lastCurrentItem = item; };
@@ -53,9 +63,9 @@ public sealed partial class MainWindow
         };
         list.PreviewKeyDown += async (_, e) =>
         {
-            if (busy || configuring) return;
+            if (busy || configuring || renameBox != null) return;
             if (e.Key == VirtualKey.F4) { e.Handled = true; await EditCurrent(); }
-            if (e.Key == VirtualKey.Insert && CurrentItem() is { } current)
+            if (e.Key == VirtualKey.Insert && !KeyDown(VirtualKey.Control) && !KeyDown(VirtualKey.Shift) && CurrentItem() is { } current)
             {
                 e.Handled = true;
                 if (list.SelectedItems.Contains(current)) list.SelectedItems.Remove(current); else list.SelectedItems.Add(current);

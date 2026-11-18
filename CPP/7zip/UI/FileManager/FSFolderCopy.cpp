@@ -454,6 +454,11 @@ static HRESULT CopyFile_Ask(
     const CFileInfo &srcFileInfo,
     const FString &destPath)
 {
+#ifdef ARKVELLO_FS_SERVICE
+  // The bounded Arkvello route does not implement link/placeholder copying yet.
+  if (srcFileInfo.Attrib & FILE_ATTRIBUTE_REPARSE_POINT)
+    return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+#endif
   if (CompareFileNames(destPath, srcPath) == 0)
   {
     RINOK(SendMessageError(state.Callback,
@@ -571,6 +576,13 @@ static HRESULT CopyFolder(
     const FString &destPath)  // without TAIL separator
 {
   RINOK(state.CallProgress())
+#ifdef ARKVELLO_FS_SERVICE
+  CFileInfo sourceInfo, targetInfo;
+  if (!sourceInfo.Find(srcPath)) return HRESULT_FROM_WIN32(GetLastError());
+  if ((sourceInfo.Attrib & FILE_ATTRIBUTE_REPARSE_POINT) ||
+      (targetInfo.Find(destPath) && (targetInfo.Attrib & FILE_ATTRIBUTE_REPARSE_POINT)))
+    return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+#endif
 
   if (IsDestChild(srcPath, destPath))
   {
@@ -634,6 +646,9 @@ static HRESULT CopyFolder(
   return S_OK;
 }
 
+#ifndef ARKVELLO_FS_SERVICE
+// Arkvello uses the path-based service below without loading CFSFolder's UI-
+// adjacent provider graph. Ordinary upstream builds retain all folder methods.
 Z7_COM7F_IMF(CFSFolder::CopyTo(Int32 moveMode, const UInt32 *indices, UInt32 numItems,
     Int32 /* includeAltStreams */, Int32 /* replaceAltStreamColon */,
     const wchar_t *path, IFolderOperationsExtractCallback *callback))
@@ -742,6 +757,8 @@ Z7_COM7F_IMF(CFSFolder::CopyTo(Int32 moveMode, const UInt32 *indices, UInt32 num
 
 
 
+#endif
+
 /* we can call CopyFileSystemItems() from CDropTarget::Drop() */
 
 HRESULT CopyFileSystemItems(
@@ -847,6 +864,7 @@ HRESULT CopyFileSystemItems(
    is optimized for IFolderArchiveUpdateCallback interface,
    but we want to use IFolderOperationsExtractCallback interface instead */
 
+#ifndef ARKVELLO_FS_SERVICE
 Z7_COM7F_IMF(CFSFolder::CopyFrom(Int32 /* moveMode */, const wchar_t * /* fromFolderPath */,
     const wchar_t * const * /* itemsPaths */, UInt32 /* numItems */, IProgress * /* progress */))
 {
@@ -867,5 +885,6 @@ Z7_COM7F_IMF(CFSFolder::CopyFromFile(UInt32 /* index */, const wchar_t * /* full
 {
   return E_NOTIMPL;
 }
+#endif
 
 }

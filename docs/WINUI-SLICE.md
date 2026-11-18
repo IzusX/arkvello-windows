@@ -6,6 +6,8 @@ separates executed checks from gates still required before broad migration.
 The 2026-11-18 [validation record](STAGE3-VALIDATION.md) supersedes the older
 remaining-gates list below where implementation has since been added. It does
 not waive unexecuted native-input, accessibility or clean-machine checks.
+The user subsequently authorized stage 4. See [the filesystem workflow record](STAGE4-VALIDATION.md)
+for current additions; this document remains the stage 3 implementation checkpoint.
 
 ## Run and build
 

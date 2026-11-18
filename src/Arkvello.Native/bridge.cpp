@@ -1,4 +1,6 @@
 #include <windows.h>
+#include <shobjidl.h>
+#include <sherrors.h>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
@@ -12,8 +14,29 @@
 #include "../../CPP/7zip/UI/Common/ArchiveExtractCallback.h"
 #include "../../CPP/7zip/UI/Agent/Agent.h"
 #include "../../CPP/7zip/UI/Common/PropIDUtils.h"
+#include "../../CPP/7zip/UI/FileManager/FSFolder.h"
+#include "../../CPP/7zip/Common/FilePathAutoRename.h"
 
 HINSTANCE g_hInstance = nullptr;
+// Bounded extraction of CFsFolderStat::Enumerate from upstream FSFolder.cpp.
+// Keeping this provider utility avoids linking unrelated drive/network/comment
+// providers into the archive service. Recheck against the pinned source on updates.
+HRESULT NFsFolder::CFsFolderStat::Enumerate() {
+  if (Progress) { RINOK(Progress->SetCompleted(nullptr)) }
+  Path.Add_PathSepar();
+  const unsigned len = Path.Len();
+  NWindows::NFile::NFind::CEnumerator enumerator;
+  enumerator.SetDirPrefix(Path);
+  NWindows::NFile::NFind::CDirEntry fi;
+  while (enumerator.Next(fi)) {
+    if (fi.Attrib & FILE_ATTRIBUTE_REPARSE_POINT) return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+    if (fi.IsDir()) {
+      NumFolders++; Path.DeleteFrom(len); Path += fi.Name;
+      RINOK(Enumerate())
+    } else { NumFiles++; Size += fi.Size; }
+  }
+  return S_OK;
+}
 // Agent exposes comparison methods through its folder vtable. The slice's
 // folder is used only for native-index mapping, never for UI sorting. Avoid the
 // original PanelSort dependency and its application-global settings/window.
@@ -89,6 +112,107 @@ struct Job {
     e.kind = 5; e.code = 0x101;
     return emit(e); // A skipped archive must not become clean success.
   }
+};
+
+// Adapted from CExtractCallbackImp::AskWrite. Keep upstream overwrite answers,
+// AutoRenamePath, and the provider's CopyFileEx/MoveFileWithProgress data path.
+// No File Manager controls, registry preferences or window globals are reused.
+class FileCopyCallback final : public IFolderOperationsExtractCallback, public CMyUnknownImp {
+  Z7_COM_QI_BEGIN2(IFolderOperationsExtractCallback)
+  Z7_COM_QI_ENTRY(IProgress)
+  Z7_COM_QI_END
+  Z7_COM_ADDREF_RELEASE
+  Job &job;
+  int overwrite = 0; // ask, overwrite all, skip all, rename all
+public:
+  explicit FileCopyCallback(Job &value) : job(value) {}
+  Z7_COM7F_IMF(SetTotal(UInt64 value)) { job.total = value; return job.check(); }
+  Z7_COM7F_IMF(SetCompleted(const UInt64 *value)) { return job.progress(value); }
+  Z7_COM7F_IMF(SetNumFiles(UInt64)) { return job.check(); }
+  Z7_COM7F_IMF(SetCurrentFilePath(const wchar_t *path)) {
+    RINOK(job.check())
+    AvEvent e{}; e.kind = 6; e.path1 = path; return job.emit(e);
+  }
+  Z7_COM7F_IMF(ShowMessage(const wchar_t *message)) {
+    AvEvent e{}; e.kind = 5; e.path1 = message; return job.emit(e);
+  }
+  Z7_COM7F_IMF(AskWrite(const wchar_t *source, Int32 isFolder, const FILETIME *time,
+    const UInt64 *size, const wchar_t *destination, BSTR *output, Int32 *write)) {
+    RINOK(job.check())
+    *output = nullptr; *write = 0;
+    FString target = destination;
+    NWindows::NFile::NFind::CFileInfo existing;
+    if (existing.Find(target)) {
+      if (existing.Attrib & FILE_ATTRIBUTE_REPARSE_POINT) return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+      if (isFolder || existing.IsDir()) {
+        if ((isFolder != 0) == existing.IsDir()) return S_OK;
+        RINOK(ShowMessage(L"Cannot replace a folder with a file or a file with a folder."))
+        return E_FAIL;
+      }
+      if (overwrite == 2) return S_OK;
+      if (overwrite == 0) {
+        AvEvent e{}; e.kind = 4; e.path1 = destination; e.path2 = source;
+        e.flags = 1 | 4; e.size1 = existing.Size;
+        e.time1 = (UInt64(existing.MTime.dwHighDateTime) << 32) | existing.MTime.dwLowDateTime;
+        if (size) { e.flags |= 2; e.size2 = *size; }
+        if (time) { e.flags |= 8; e.time2 = (UInt64(time->dwHighDateTime) << 32) | time->dwLowDateTime; }
+        int answer = 5; RINOK(job.emit(e, nullptr, 0, &answer))
+        switch (answer) {
+          case 0: break;
+          case 1: overwrite = 1; break;
+          case 2: return S_OK;
+          case 3: overwrite = 2; return S_OK;
+          case 4: overwrite = 3; break;
+          case 5: return E_ABORT;
+          default: return E_INVALIDARG;
+        }
+      }
+      if (overwrite == 3) {
+        if (!AutoRenamePath(target)) return HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+      } else if (NWindows::NFile::NFind::DoesFileExist_Raw(target)) {
+        // This matches the original provider's replacement policy. Cancellation
+        // is not rollback; the operation UI explains partial output explicitly.
+        if (!NWindows::NFile::NDir::DeleteFileAlways(target)) return HRESULT_FROM_WIN32(GetLastError());
+      }
+    }
+    *output = SysAllocString(target);
+    if (!*output) return E_OUTOFMEMORY;
+    *write = 1; return S_OK;
+  }
+};
+
+class DeleteSink final : public IFileOperationProgressSink, public CMyUnknownImp {
+  // Windows Shell uses its own COM IIDs, rather than upstream's custom IID map.
+public:
+  STDMETHOD(QueryInterface)(REFIID iid, void **out) override {
+    if (!out) return E_POINTER;
+    *out = nullptr;
+    if (iid == __uuidof(IUnknown) || iid == __uuidof(IFileOperationProgressSink))
+      { *out = static_cast<IFileOperationProgressSink *>(this); AddRef(); return S_OK; }
+    return E_NOINTERFACE;
+  }
+  Z7_COM_ADDREF_RELEASE
+public:
+  Job &job;
+  HRESULT failure = S_OK;
+  explicit DeleteSink(Job &value) : job(value) {}
+  HRESULT post(HRESULT h) { if (FAILED(h) && SUCCEEDED(failure)) failure = h; return S_OK; }
+  STDMETHOD(StartOperations)() override { return job.check(); }
+  STDMETHOD(FinishOperations)(HRESULT h) override { return post(h); }
+  STDMETHOD(PreRenameItem)(DWORD, IShellItem *, LPCWSTR) override { return job.check(); }
+  STDMETHOD(PostRenameItem)(DWORD, IShellItem *, LPCWSTR, HRESULT h, IShellItem *) override { return post(h); }
+  STDMETHOD(PreMoveItem)(DWORD, IShellItem *, IShellItem *, LPCWSTR) override { return job.check(); }
+  STDMETHOD(PostMoveItem)(DWORD, IShellItem *, IShellItem *, LPCWSTR, HRESULT h, IShellItem *) override { return post(h); }
+  STDMETHOD(PreCopyItem)(DWORD, IShellItem *, IShellItem *, LPCWSTR) override { return job.check(); }
+  STDMETHOD(PostCopyItem)(DWORD, IShellItem *, IShellItem *, LPCWSTR, HRESULT h, IShellItem *) override { return post(h); }
+  STDMETHOD(PreDeleteItem)(DWORD, IShellItem *) override { return job.check(); }
+  STDMETHOD(PostDeleteItem)(DWORD, IShellItem *, HRESULT h, IShellItem *) override { return post(h); }
+  STDMETHOD(PreNewItem)(DWORD, IShellItem *, LPCWSTR) override { return job.check(); }
+  STDMETHOD(PostNewItem)(DWORD, IShellItem *, LPCWSTR, LPCWSTR, DWORD, HRESULT h, IShellItem *) override { return post(h); }
+  STDMETHOD(UpdateProgress)(UINT total, UINT done) override { job.total = total; UInt64 value = done; return job.progress(&value); }
+  STDMETHOD(ResetTimer)() override { return S_OK; }
+  STDMETHOD(PauseTimer)() override { return S_OK; }
+  STDMETHOD(ResumeTimer)() override { return S_OK; }
 };
 
 struct Session {
@@ -263,7 +387,7 @@ public:
 };
 }
 
-uint32_t av_abi() { return 2; }
+uint32_t av_abi() { return 3; }
 void *av_job_create(AvCallback callback, void *context) {
   try { return new Job{callback, context}; } catch (...) { return nullptr; }
 }
@@ -472,6 +596,64 @@ int32_t av_export_item(void *sessionValue, void *jobValue, uint32_t index, const
     return spec->GotStream && spec->Finished ? S_OK : E_FAIL;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; }
     catch (...) { return E_FAIL; }
+}
+
+int32_t av_fs_transfer(void *value, const wchar_t * const *paths, uint32_t count,
+  const wchar_t *destination, int move) {
+  if (!value || !paths || !count || !destination || !*destination) return E_INVALIDARG;
+  try {
+    auto &job = *static_cast<Job *>(value); RINOK(job.check())
+    UStringVector sources;
+    for (uint32_t i = 0; i < count; ++i) {
+      if (!paths[i] || !*paths[i]) return E_INVALIDARG;
+      sources.Add(paths[i]);
+    }
+    FString target = destination;
+    NWindows::NFile::NName::NormalizeDirPathPrefix(target);
+    auto *spec = new FileCopyCallback(job);
+    CMyComPtr<IFolderOperationsExtractCallback> callback = spec;
+    return NFsFolder::CopyFileSystemItems(sources, target, move != 0, callback);
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
+}
+
+int32_t av_fs_delete(void *value, const wchar_t * const *paths, uint32_t count,
+  uintptr_t owner, int recycle) {
+  if (!value || !paths || !count) return E_INVALIDARG;
+  try {
+    auto &job = *static_cast<Job *>(value); RINOK(job.check())
+    const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(initialized)) return initialized;
+    struct Uninit { ~Uninit() { CoUninitialize(); } } uninit;
+    CMyComPtr<IFileOperation> operation;
+    RINOK(CoCreateInstance(__uuidof(FileOperation), nullptr, CLSCTX_INPROC_SERVER,
+      __uuidof(IFileOperation), (void **)&operation))
+    DWORD flags = FOF_NO_CONNECTED_ELEMENTS;
+    if (recycle) flags |= FOFX_RECYCLEONDELETE | FOF_WANTNUKEWARNING;
+    // The caller has already confirmed the exact selection. Fixture operations
+    // have no window; fail rather than displaying an unattended error dialog.
+    if (!owner) flags |= FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOFX_EARLYFAILURE;
+    RINOK(operation->SetOperationFlags(flags))
+    RINOK(operation->SetOwnerWindow(reinterpret_cast<HWND>(owner)))
+    auto *spec = new DeleteSink(job);
+    CMyComPtr<IFileOperationProgressSink> sink = spec;
+    DWORD cookie = 0; RINOK(operation->Advise(sink, &cookie))
+    struct Unadvise { IFileOperation *op; DWORD cookie; ~Unadvise() { op->Unadvise(cookie); } } connection{operation, cookie};
+    for (uint32_t i = 0; i < count; ++i) {
+      RINOK(job.check())
+      if (!paths[i] || !*paths[i]) return E_INVALIDARG;
+      CMyComPtr<IShellItem> item;
+      RINOK(SHCreateItemFromParsingName(paths[i], nullptr, __uuidof(IShellItem), (void **)&item))
+      RINOK(operation->DeleteItem(item, nullptr))
+    }
+    const HRESULT h = operation->PerformOperations();
+    BOOL aborted = FALSE;
+    RINOK(operation->GetAnyOperationsAborted(&aborted))
+    if (job.cancelled || h == COPYENGINE_E_USER_CANCELLED || spec->failure == COPYENGINE_E_USER_CANCELLED ||
+        h == HRESULT_FROM_WIN32(ERROR_CANCELLED) || spec->failure == HRESULT_FROM_WIN32(ERROR_CANCELLED)) return E_ABORT;
+    if (FAILED(h)) return h;
+    if (FAILED(spec->failure)) return spec->failure;
+    return aborted ? E_ABORT : S_OK;
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
 }
 
 int32_t av_replace_item(void *sessionValue, void *jobValue, uint32_t index,

@@ -32,3 +32,9 @@ Windows 10 support remains a target, not a completed compatibility certification
 WinAppSDK, generated app PRI/XBF resources and dependency notices. Local native
 client diagnostics confirm app-local coreclr.dll loading with an invalid
 DOTNET_ROOT. This does not establish a clean-machine or Windows 10 run.
+
+The stage 4 filesystem increment retains the 19041 x64 minimum. Its Shell delete
+route uses IFileOperation on an STA thread and flags available since Windows 8;
+copy/move reuses the pinned upstream provider. Clipboard and drag use Windows
+StorageItems. Windows 10 execution, Explorer interoperability and cloud/link
+semantics still need their dedicated acceptance cases.

@@ -2,7 +2,7 @@
   <Window.SystemBackdrop><MicaBackdrop Kind="Base"/></Window.SystemBackdrop>
   <Grid x:Name="WindowHost" SizeChanged="OnWindowSizeChanged">
   <Viewbox Stretch="Fill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" UseLayoutRounding="False">
-  <Grid x:Name="Root" Background="Transparent" Loaded="OnLoaded" PreviewKeyDown="OnRootKeyDown">
+  <Grid x:Name="Root" Background="Transparent" Loaded="OnLoaded" PreviewKeyDown="OnRootKeyDown" PreviewKeyUp="OnRootKeyUp">
     <Grid.Resources>
       <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
@@ -58,9 +58,21 @@
         <MenuFlyoutItem Text="Открыть архив…" Click="OnOpenArchive"/>
         <MenuFlyoutItem Text="Извлечь…" Click="OnExtract"/>
         <MenuFlyoutItem Text="Проверить" Click="OnTest"/>
+        <MenuFlyoutSeparator/>
+        <MenuFlyoutItem x:Name="NewFolderMenu" Text="Создать папку…" KeyboardAcceleratorTextOverride="F7" Click="OnNewFolder"/>
+        <MenuFlyoutItem x:Name="NewFileMenu" Text="Создать файл…" Click="OnNewFile"/>
+        <MenuFlyoutItem x:Name="RenameMenu" Text="Переименовать" KeyboardAcceleratorTextOverride="F2" Click="OnRename"/>
+        <MenuFlyoutItem x:Name="CopyToMenu" Text="Копировать в…" KeyboardAcceleratorTextOverride="F5" Click="OnCopyTo"/>
+        <MenuFlyoutItem x:Name="MoveToMenu" Text="Переместить в…" KeyboardAcceleratorTextOverride="F6" Click="OnMoveTo"/>
+        <MenuFlyoutItem x:Name="DeleteMenu" Text="Удалить…" KeyboardAcceleratorTextOverride="Delete" Click="OnDelete"/>
         <MenuFlyoutSeparator/><MenuFlyoutItem Text="Выход" Click="OnExit"/>
       </MenuBarItem>
-      <MenuBarItem Title="Правка"><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/><ToggleMenuFlyoutItem Text="Независимые отметки" Click="OnMarkMode"/><MenuFlyoutSeparator/><MenuFlyoutItem Text="Редактировать в Блокноте…" Click="OnEdit"/></MenuBarItem>
+      <MenuBarItem Title="Правка">
+        <MenuFlyoutItem x:Name="ClipboardCopyMenu" Text="Копировать" KeyboardAcceleratorTextOverride="Ctrl+C" Click="OnClipboardCopy"/>
+        <MenuFlyoutItem x:Name="ClipboardCutMenu" Text="Вырезать" KeyboardAcceleratorTextOverride="Ctrl+X" Click="OnClipboardCut"/>
+        <MenuFlyoutItem x:Name="PasteMenu" Text="Вставить" KeyboardAcceleratorTextOverride="Ctrl+V" Click="OnPaste"/>
+        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/><ToggleMenuFlyoutItem Text="Независимые отметки" Click="OnMarkMode"/><MenuFlyoutSeparator/><MenuFlyoutItem Text="Редактировать в Блокноте…" Click="OnEdit"/>
+      </MenuBarItem>
       <MenuBarItem Title="Вид">
         <MenuFlyoutItem Text="Таблица" Tag="Details" Click="OnView"/>
         <MenuFlyoutItem Text="Список" Tag="List" Click="OnView"/>
@@ -88,9 +100,9 @@
       <AppBarButton x:Name="ExtractButton" Label="Извлечь" Click="OnExtract"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentExtract}"/></AppBarButton.Icon></AppBarButton>
       <AppBarButton x:Name="TestButton" Label="Проверить" Click="OnTest"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentTest}"/></AppBarButton.Icon></AppBarButton>
       <AppBarSeparator/>
-      <AppBarButton Label="Копировать" IsEnabled="False"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentCopy}"/></AppBarButton.Icon></AppBarButton>
-      <AppBarButton Label="Переместить" IsEnabled="False"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentMove}"/></AppBarButton.Icon></AppBarButton>
-      <AppBarButton Label="Удалить" IsEnabled="False"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentDelete}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton x:Name="CopyToButton" Label="Копировать" Click="OnCopyTo" ToolTipService.ToolTip="Копировать в папку (F5)"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentCopy}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton x:Name="MoveToButton" Label="Переместить" Click="OnMoveTo" ToolTipService.ToolTip="Переместить в папку (F6)"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentMove}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton x:Name="DeleteButton" Label="Удалить" Click="OnDelete" ToolTipService.ToolTip="В корзину (Delete); без корзины (Shift+Delete)"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentDelete}"/></AppBarButton.Icon></AppBarButton>
       <AppBarSeparator/>
       <AppBarButton Label="Вид"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentView}"/></AppBarButton.Icon><AppBarButton.Flyout><MenuFlyout>
         <MenuFlyoutItem Text="Таблица" Tag="Details" Click="OnView"/><MenuFlyoutItem Text="Список" Tag="List" Click="OnView"/>

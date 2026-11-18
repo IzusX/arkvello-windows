@@ -2,7 +2,9 @@
 
 Status: implementation expanded and locally checked; final acceptance pending.
 The user requested completing the whole stage. No requirement was removed to
-make that status appear complete. Broad stages 4–8 have not been started.
+make that status appear complete. At this checkpoint stages 4–8 had not started.
+The user subsequently authorized the next stage; current stage 4 work is recorded
+in [STAGE4-VALIDATION.md](STAGE4-VALIDATION.md). The acceptance items here remain open.
 
 ## Runnable result
 

@@ -8,6 +8,13 @@ dependency notices and a SHA-256 payload manifest. It installs/registers nothing
 `prepare-stage3-fixtures.ps1` plus `test-stage3-client.ps1` run opt-in,
 application-owned layout/lifetime checks, not injected pointer/keyboard tests.
 See [current validation and its limits](STAGE3-VALIDATION.md).
+For the stage 4 filesystem increment, also run
+`dotnet run --project tests/Arkvello.FileChecks -- "$PWD"` and
+`./scripts/test-stage4-client.ps1` after publishing. The latter opens/closes its
+own diagnostic window and uses new fixture files under build/, without changing
+the system clipboard. Windows.Storage needs a normal desktop token; a restricted
+execution sandbox returned E_ACCESSDENIED despite ordinary file I/O succeeding.
+See [stage 4 evidence](STAGE4-VALIDATION.md).
 
 ## Prerequisites
 

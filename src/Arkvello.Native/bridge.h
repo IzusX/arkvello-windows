@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <wchar.h>
-// ABI 2. All strings are UTF-16, borrowed only until the callback returns.
+// ABI 3. All strings are UTF-16, borrowed only until the callback returns.
 // Functions run synchronously on the caller's worker. A session is single-owner,
 // non-reentrant; cancel/pause are the only concurrent calls. Never close in use.
 struct AvEvent {
@@ -44,3 +44,11 @@ AV_API int32_t av_export_item(void *session, void *job, uint32_t index, const wc
 AV_API int32_t av_replace_item(void *session, void *job, uint32_t index,
   const wchar_t *replacement, const wchar_t *output);
 AV_API void av_close(void *session);
+// Filesystem inputs are explicit absolute paths, never wildcard expressions.
+// Transfer reuses the upstream FS provider and existing overwrite events.
+AV_API int32_t av_fs_transfer(void *job, const wchar_t * const *paths, uint32_t count,
+  const wchar_t *destination, int move);
+// Windows owns recycle semantics and any native safety/error dialogs. Owner is
+// the main HWND; zero is reserved for noninteractive fixture checks.
+AV_API int32_t av_fs_delete(void *job, const wchar_t * const *paths, uint32_t count,
+  uintptr_t owner, int recycle);

@@ -2,8 +2,11 @@
 
 2026-11-16. Stage 1 source assessment is complete. The user accepted C# + WinUI 3
 with existing C++ services, approved stage 2 composition and authorized stage 3.
-Stage 3 is in progress with a [runnable native slice](WINUI-SLICE.md); stages 4-8
-have not started. Initial slice boundaries are recorded in
+Stage 3 implementation has a [runnable native slice](WINUI-SLICE.md), with final
+acceptance still pending. After receiving that report, the user authorized the
+next stage on 2026-11-18. Stage 4 is now in progress; stages 5-8 have not started.
+This progression does not waive the recorded stage 3 acceptance gates.
+Initial slice boundaries are recorded in
 [decision 0002](decisions/0002-working-slice-boundary.md); release gates remain open.
 The 2026-11-18 [stage 3 validation record](STAGE3-VALIDATION.md) and
 [operation/recovery decision](decisions/0003-operation-ownership-and-recovery.md)
@@ -124,6 +127,10 @@ have a concrete resolution before broad implementation. A failed candidate
 returns to evaluation rather than locking in a workaround for every surface.
 
 ## 4. Main window and filesystem workflows
+
+Status: authorized and in progress, 2026-11-18. The first filesystem workflow
+increment and its remaining work are recorded in [STAGE4-VALIDATION.md](STAGE4-VALIDATION.md).
+This is not completion of stage 4 or retrospective acceptance of stage 3.
 
 - Implement the selected composition, navigation, editable path/history,
   file icons/overlays, columns, sorting, list modes, status and one/two panels.

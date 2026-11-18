@@ -1,0 +1,193 @@
+{
+  "root": "C:\\Arkvello\\build\\file-checks-468194265ae7415c939f587c8f707e70",
+  "checks": [
+    {
+      "name": "invalid leaf: ",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: .",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: ..",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: a/b",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: a\\b",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: a:b",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: x*",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: bad.",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: bad ",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: NUL.txt",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: COM1",
+      "passed": true
+    },
+    {
+      "name": "invalid leaf: lpt\u00B2.txt",
+      "passed": true
+    },
+    {
+      "name": "create exact Unicode file and folder",
+      "passed": true
+    },
+    {
+      "name": "create file never truncates existing data",
+      "passed": true
+    },
+    {
+      "name": "create existing folder reports conflict",
+      "passed": true
+    },
+    {
+      "name": "rename file preserves bytes",
+      "passed": true
+    },
+    {
+      "name": "rename collision never overwrites",
+      "passed": true
+    },
+    {
+      "name": "rename conflict keeps both files",
+      "passed": true
+    },
+    {
+      "name": "case-only file rename preserves contents",
+      "passed": true
+    },
+    {
+      "name": "rename directory keeps its children",
+      "passed": true
+    },
+    {
+      "name": "overlapping selection collapses to its parent",
+      "passed": true
+    },
+    {
+      "name": "copy into descendant rejected before mutation",
+      "passed": true
+    },
+    {
+      "name": "copy onto same file rejected before mutation",
+      "passed": true
+    },
+    {
+      "name": "drive root cannot be a destructive source",
+      "passed": true
+    },
+    {
+      "name": "upstream copies exact files and recursive directories",
+      "passed": true
+    },
+    {
+      "name": "upstream copy preserves modification time and ADS",
+      "passed": true
+    },
+    {
+      "name": "real copy overwrite answer 0",
+      "passed": true
+    },
+    {
+      "name": "real copy overwrite answer 1",
+      "passed": true
+    },
+    {
+      "name": "real copy overwrite answer 2",
+      "passed": true
+    },
+    {
+      "name": "real copy overwrite answer 3",
+      "passed": true
+    },
+    {
+      "name": "real copy overwrite answer 4",
+      "passed": true
+    },
+    {
+      "name": "real copy overwrite answer 5",
+      "passed": true
+    },
+    {
+      "name": "overwrite policy is scoped to job 1",
+      "passed": true
+    },
+    {
+      "name": "overwrite policy is scoped to job 3",
+      "passed": true
+    },
+    {
+      "name": "overwrite policy is scoped to job 4",
+      "passed": true
+    },
+    {
+      "name": "upstream move retains file bytes and removes source",
+      "passed": true
+    },
+    {
+      "name": "upstream move retains recursive directory",
+      "passed": true
+    },
+    {
+      "name": "skipped move keeps source and destination",
+      "passed": true
+    },
+    {
+      "name": "preflight cancel leaves destination untouched",
+      "passed": true
+    },
+    {
+      "name": "cancel during real upstream copy",
+      "passed": true
+    },
+    {
+      "name": "sharing denial cannot report clean copy",
+      "passed": true
+    },
+    {
+      "name": "filesystem preflight acknowledges pause",
+      "passed": true
+    },
+    {
+      "name": "filesystem copy resumes from pause",
+      "passed": true
+    },
+    {
+      "name": "upstream copies a real source longer than MAX_PATH",
+      "passed": true
+    },
+    {
+      "name": "Windows permanent delete removes only owned tree",
+      "passed": true
+    },
+    {
+      "name": "Windows deletion sharing denial reports failure",
+      "passed": true
+    },
+    {
+      "name": "delete cancel preserves source",
+      "passed": true
+    }
+  ]
+}

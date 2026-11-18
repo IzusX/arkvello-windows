@@ -11,6 +11,8 @@ on:
       - 'src/Arkvello.WinUI/**'
       - 'scripts/publish-winui.ps1'
       - 'tests/Arkvello.BridgeChecks/**'
+      - 'tests/Arkvello.FileChecks/**'
+      - 'scripts/test-stage4-client.ps1'
       - 'CPP/**'
       - 'C/**'
       - 'Asm/**'
@@ -62,6 +64,13 @@ jobs:
           $publishExit = $LASTEXITCODE
           Get-Content build/stage3-publish.log
           exit $publishExit
+      - name: Check filesystem adapter on disposable inputs
+        shell: pwsh
+        run: |
+          dotnet run --project tests/Arkvello.FileChecks -- "$PWD" *> build/stage4-file-checks.log
+          $checkExit = $LASTEXITCODE
+          Get-Content build/stage4-file-checks.log
+          exit $checkExit
       - name: Upload service build and check evidence
         if: always()
         uses: actions/upload-artifact@v6
@@ -74,6 +83,8 @@ jobs:
             build/native-bridge/*.map
             build/bridge-checks-*/checks.json
             build/stage3-publish.log
+            build/stage4-file-checks.log
+            build/file-checks-*/checks.json
             build/portable-x64/payload-manifest.json
             build/portable-x64/Arkvello.runtimeconfig.json
           if-no-files-found: warn

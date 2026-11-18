@@ -53,7 +53,7 @@ public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
     internal void ResetItems() => items.Clear();
     public ArchiveJob(Func<ArchiveEvent, PromptReply> handler) : base(true)
     {
-        if (NativeApi.av_abi() != 2) throw new InvalidOperationException("Версия Arkvello.Native.dll не соответствует приложению. Восстановите полную сборку Arkvello.");
+        if (NativeApi.av_abi() != 3) throw new InvalidOperationException("Версия Arkvello.Native.dll не соответствует приложению. Восстановите полную сборку Arkvello.");
         this.handler = handler;
         callback = OnEvent;
         SetHandle(NativeApi.av_job_create(callback, IntPtr.Zero));
@@ -98,7 +98,7 @@ public sealed class NativeArchive : SafeHandleZeroOrMinusOneIsInvalid
     private NativeArchive(IntPtr value) : base(true) => SetHandle(value);
     public static (NativeArchive? Archive, ArchiveResult Result) Open(string path, ArchiveJob job)
     {
-        if (NativeApi.av_abi() != 2) throw new InvalidOperationException("Unsupported Arkvello native ABI.");
+        if (NativeApi.av_abi() != 3) throw new InvalidOperationException("Unsupported Arkvello native ABI.");
         int result = NativeApi.av_open(path, job, out var value);
         return (result == 0 ? new NativeArchive(value) : null, new(result, job.Issues));
     }
@@ -179,4 +179,8 @@ internal static class NativeApi
     internal static extern int av_export_item(NativeArchive session, ArchiveJob job, uint index, string output);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     internal static extern int av_replace_item(NativeArchive session, ArchiveJob job, uint index, string replacement, string output);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern int av_fs_transfer(ArchiveJob job, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr)] string[] paths, uint count, string destination, int move);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern int av_fs_delete(ArchiveJob job, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr)] string[] paths, uint count, nuint owner, int recycle);
 }

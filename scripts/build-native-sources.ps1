@@ -23,7 +23,7 @@ foreach ($source in $sources) {
 # Z7_DEVICE_FILE changes upstream class layouts used across this boundary.
 $flags = @('/nologo', '/c', '/W4', '/WX', '/O2', '/Gy', '/MT', '/MP8',
     '/DUNICODE', '/D_UNICODE', '/DWIN32', '/D_WIN64', '/D_WIN32_WINNT=0x0A00',
-    '/DZ7_EXTERNAL_CODECS', '/DZ7_DEVICE_FILE', '/DZ7_LANG', '/DARKVELLO_NATIVE')
+    '/DZ7_EXTERNAL_CODECS', '/DZ7_DEVICE_FILE', '/DZ7_LANG', '/DARKVELLO_NATIVE', '/DARKVELLO_FS_SERVICE')
 Push-Location $objects
 try {
     foreach ($extension in '.c', '.cpp') {

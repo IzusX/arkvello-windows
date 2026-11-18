@@ -6,7 +6,9 @@ for Windows 11. The current client uses C# + WinUI 3 with retained C++ archive
 services. Its technical slice browses real folders and nested archives, extracts
 exact native items, handles prompts and demonstrates safe editor update-back.
 A self-contained development folder is built with `scripts/publish-winui.ps1`.
-Stage 3 acceptance remains in progress; this is not a complete FM replacement.
+Stage 4 has started with filesystem copy/move, inline rename, create/delete and
+StorageItems clipboard/drag integration. See [its validation and remaining work](docs/STAGE4-VALIDATION.md).
+Stage 3 acceptance remains pending; this is not a complete FM replacement.
 The earlier Win32 styling prototype and its unresolved interaction defects are
 documented separately and are not the current UI implementation.
 See [running it and remaining gates](docs/WINUI-SLICE.md) and the
@@ -24,6 +26,8 @@ is developed in a separate repository.
 - [Initial native boundary and list decision](docs/decisions/0002-working-slice-boundary.md)
 - [Operation ownership, virtual input and edit recovery](docs/decisions/0003-operation-ownership-and-recovery.md)
 - [Stage 3 validation and outstanding acceptance](docs/STAGE3-VALIDATION.md)
+- [Stage 4 filesystem workflow implementation and validation](docs/STAGE4-VALIDATION.md)
+- [Filesystem service and Windows Shell boundary](docs/decisions/0004-filesystem-operations.md)
 - [Stage 2 interface proposal and full capability placement](docs/INTERFACE-PROPOSAL.md)
 - [Current interactive design study](design/stage2/README.md)
 - [Build and validation](docs/BUILDING.md)

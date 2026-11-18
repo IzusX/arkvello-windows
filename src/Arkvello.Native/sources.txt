@@ -1,4 +1,4 @@
-# Explicit service source closure; no FM/GUI implementation or inherited objects.
+# Explicit service source closure; no FM/GUI window controls or inherited objects.
 C/Alloc.c
 C/Sort.c
 C/Threads.c
@@ -41,6 +41,7 @@ CPP/7zip/UI/Agent/AgentProxy.cpp
 CPP/7zip/UI/Agent/ArchiveFolder.cpp
 CPP/7zip/UI/Agent/ArchiveFolderOut.cpp
 CPP/7zip/UI/Agent/UpdateCallbackAgent.cpp
+CPP/7zip/UI/FileManager/FSFolderCopy.cpp
 CPP/7zip/UI/Common/ArchiveExtractCallback.cpp
 CPP/7zip/UI/Common/ArchiveOpenCallback.cpp
 CPP/7zip/UI/Common/DefaultName.cpp

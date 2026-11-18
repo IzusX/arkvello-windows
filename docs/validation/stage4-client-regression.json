@@ -1,0 +1,371 @@
+[
+  {
+    "name": "real filesystem enumeration",
+    "passed": true,
+    "details": {
+      "count": 10000,
+      "ms": 54.5435
+    }
+  },
+  {
+    "name": "encoded archive enumeration",
+    "passed": true,
+    "details": {
+      "count": 10000,
+      "ms": 211.7201
+    }
+  },
+  {
+    "name": "real encoded archive test",
+    "passed": true,
+    "details": null
+  },
+  {
+    "name": "dynamic property binding renders real method",
+    "passed": true,
+    "details": {
+      "value": {
+        "Type": 8,
+        "Text": "LZMA2:18",
+        "Raw": 0,
+        "SortKey": "LZMA2:18"
+      },
+      "text": [
+        "file-00000-Unicode-\u03A9-\u0434\u043B\u0438\u043D\u043D\u043E\u0435-\u0438\u043C\u044F.txt",
+        "18.11.2026 12:24",
+        "\u0424\u0430\u0439\u043B \u0432 \u0430\u0440\u0445\u0438\u0432\u0435",
+        "1\u00A0028 \u0411",
+        "LZMA2:18",
+        "file-00001-Unicode-\u03A9-\u0434\u043B\u0438\u043D\u043D\u043E\u0435-\u0438\u043C\u044F.txt",
+        "18.11.2026 12:24",
+        "\u0424\u0430\u0439\u043B \u0432 \u0430\u0440\u0445\u0438\u0432\u0435",
+        "1\u00A0028 \u0411",
+        "LZMA2:18",
+        "file-00002-Unicode-\u03A9-\u0434\u043B\u0438\u043D\u043D\u043E\u0435-\u0438\u043C\u044F.txt",
+        "18.11.2026 12:24"
+      ]
+    }
+  },
+  {
+    "name": "native current item is independent of marks",
+    "passed": true,
+    "details": null
+  },
+  {
+    "name": "root refresh retains marks current item and dynamic columns",
+    "passed": true,
+    "details": null
+  },
+  {
+    "name": "layout/Light/75/Details",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 788.2222290039062,
+      "realized": 31,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/75/List",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 820.2222290039062,
+      "realized": 80,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/75/SmallIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 820.2222290039062,
+      "realized": 109,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/75/LargeIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 820.2222290039062,
+      "realized": 91,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/100/Details",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 540.6666870117188,
+      "realized": 53,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/100/List",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 572.6666870117188,
+      "realized": 88,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/100/SmallIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 572.6666870117188,
+      "realized": 76,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/100/LargeIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 572.6666870117188,
+      "realized": 71,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/150/Details",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 293.1111145019531,
+      "realized": 43,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/150/List",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 325.1111145019531,
+      "realized": 60,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/150/SmallIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 325.1111145019531,
+      "realized": 70,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Light/150/LargeIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 325.1111145019531,
+      "realized": 86,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/75/Details",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 788.2222290039062,
+      "realized": 59,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/75/List",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 820.2222290039062,
+      "realized": 80,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/75/SmallIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 820.2222290039062,
+      "realized": 97,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/75/LargeIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1553.77783203125,
+      "ActualHeight": 820.2222290039062,
+      "realized": 101,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/100/Details",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 540.6666870117188,
+      "realized": 58,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/100/List",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 572.6666870117188,
+      "realized": 63,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/100/SmallIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 572.6666870117188,
+      "realized": 91,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/100/LargeIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 1165.3333740234375,
+      "ActualHeight": 572.6666870117188,
+      "realized": 50,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/150/Details",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 293.1111145019531,
+      "realized": 47,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/150/List",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 325.1111145019531,
+      "realized": 60,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/150/SmallIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 325.1111145019531,
+      "realized": 64,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "layout/Dark/150/LargeIcons",
+    "passed": true,
+    "details": {
+      "ActualWidth": 776.888916015625,
+      "ActualHeight": 325.1111145019531,
+      "realized": 76,
+      "selectionPattern": true,
+      "dpi": 1.5,
+      "textScale": 1
+    }
+  },
+  {
+    "name": "runtime payload",
+    "passed": true,
+    "details": {
+      "core": "C:\\Arkvello\\build\\portable-x64\\coreclr.dll",
+      "app": "C:\\Arkvello\\build\\portable-x64\\",
+      "maxDispatcherGapMs": 403.5081,
+      "elapsedMs": 10767.0899
+    }
+  },
+  {
+    "name": "cancel native password callback",
+    "passed": true,
+    "details": null
+  },
+  {
+    "name": "close window after native callback completes",
+    "passed": true,
+    "details": {
+      "promptWasVisible": true,
+      "busy": false,
+      "jobDetached": true
+    }
+  }
+]

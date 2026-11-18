@@ -122,6 +122,8 @@ public sealed partial class MainWindow : Window
         if (args.Contains("--measure-list")) await MeasureList();
         int verify = Array.IndexOf(args, "--verify-stage3");
         if (verify >= 0 && args.Length > verify + 1) await VerifyStage3(args[verify + 1]);
+        int files = Array.IndexOf(args, "--verify-stage4");
+        if (files >= 0 && args.Length > files + 1) await VerifyStage4(args[files + 1]);
     }
 
     private void RefreshColors()
@@ -151,6 +153,7 @@ public sealed partial class MainWindow : Window
     }
     private void BuildList()
     {
+        CancelRename();
         string? focused = list == null ? null : CurrentItem()?.Identity;
         var selected = list?.SelectedItems.Cast<FileEntry>().Select(e => e.Identity).ToHashSet() ?? [];
         ListHost.Children.Clear();
@@ -270,7 +273,7 @@ public sealed partial class MainWindow : Window
         FileEntry? pendingOpen = null;
         list.PreviewKeyDown += async (_, e) =>
         {
-            if (busy || configuring) return;
+            if (busy || configuring || renameBox != null) return;
             if (e.Key == VirtualKey.Enter)
             {
                 FileEntry? focused = null;
@@ -294,6 +297,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetName(list, "Файлы");
         AutomationProperties.SetAutomationId(list, "FileList");
         ConfigureContextMenu();
+        ConfigureFileInput();
         string template;
         if (details)
         {
@@ -305,12 +309,12 @@ public sealed partial class MainWindow : Window
                     ? "Converter={StaticResource ArchivePropertyConverter}, ConverterParameter=" + c.Property[11..^1] : Escape(c.Property);
                 string text = "<TextBlock Text='{Binding " + binding + "}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='16,0,12,0'" + (c.Property == "SizeText" ? " TextAlignment='Right'" : "") + "/>";
                 template += c.Property == "Name"
-                    ? "<Grid Grid.Column='" + i + "' Margin='16,0,0,0'><Grid.ColumnDefinitions><ColumnDefinition Width='26'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + ItemIcon(18) + "<TextBlock Grid.Column='1' Text='{Binding Name}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='0,0,12,0'/></Grid>"
+                    ? "<Grid Grid.Column='" + i + "' Margin='16,0,0,0'><Grid.ColumnDefinitions><ColumnDefinition Width='26'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + ItemIcon(18) + "<TextBlock Tag='FileName' Grid.Column='1' Text='{Binding Name}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='0,0,12,0'/></Grid>"
                     : "<Grid Grid.Column='" + i + "'>" + text + "</Grid>";
             }
             template += "</Grid>";
         }
-        else if (view == "List") template = "<StackPanel Orientation='Horizontal' Height='" + rowHeight.ToString(CultureInfo.InvariantCulture) + "' Spacing='8' Margin='16,0'>" + ItemIcon(18) + "<TextBlock Text='{Binding Name}' VerticalAlignment='Center'/></StackPanel>";
+        else if (view == "List") template = "<StackPanel Orientation='Horizontal' Height='" + rowHeight.ToString(CultureInfo.InvariantCulture) + "' Spacing='8' Margin='16,0'>" + ItemIcon(18) + "<TextBlock Tag='FileName' Text='{Binding Name}' VerticalAlignment='Center'/></StackPanel>";
         else
         {
             bool large = view == "LargeIcons";
@@ -327,7 +331,7 @@ public sealed partial class MainWindow : Window
             tileStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
             tileStyle.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Stretch));
             list.ItemContainerStyle = tileStyle;
-            string label = "<TextBlock Text='{Binding Name}' TextTrimming='CharacterEllipsis' MaxLines='2' TextWrapping='Wrap' FontSize='14' LineHeight='" + line + "' LineStackingStrategy='BlockLineHeight' MaxHeight='" + textHeight + "' VerticalAlignment='Center'";
+            string label = "<TextBlock Tag='FileName' Text='{Binding Name}' TextTrimming='CharacterEllipsis' MaxLines='2' TextWrapping='Wrap' FontSize='14' LineHeight='" + line + "' LineStackingStrategy='BlockLineHeight' MaxHeight='" + textHeight + "' VerticalAlignment='Center'";
             template = large
                 ? "<Grid Width='140' Height='" + tileHeight.ToString(CultureInfo.InvariantCulture) + "' Padding='8' RowSpacing='8' ToolTipService.ToolTip='{Binding Name}' AutomationProperties.Name='{Binding AccessibleName}'><Grid.RowDefinitions><RowDefinition Height='40'/><RowDefinition Height='" + textHeight + "'/></Grid.RowDefinitions>" + ItemIcon(36) + "<Grid Grid.Row='1'>" + label + " TextAlignment='Center'/></Grid></Grid>"
                 : "<Grid Width='220' Height='" + tileHeight.ToString(CultureInfo.InvariantCulture) + "' Padding='8' ColumnSpacing='8' ToolTipService.ToolTip='{Binding Name}' AutomationProperties.Name='{Binding AccessibleName}'><Grid.ColumnDefinitions><ColumnDefinition Width='24'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + ItemIcon(20) + "<Grid Grid.Column='1'>" + label + "/></Grid></Grid>";
@@ -420,12 +424,13 @@ public sealed partial class MainWindow : Window
         Status.Text = $"Элементов: {entries.Count:N0}   |   Выбрано: {list.SelectedItems.Count:N0}" + (archive != null ? "   |   Архив" : "");
         ExtractButton.IsEnabled = TestButton.IsEnabled = !busy && archive != null;
         BackButton.IsEnabled = !busy && history.Count > 0;
+        UpdateFileCommands();
     }
     private string Location => archive != null ? archivePath + " | " + archivePrefix : directory;
 
     private async Task Navigate(string path, bool remember = true)
     {
-        if (busy || configuring) return;
+        if (busy || configuring || renameBox != null) return;
         path = path.Trim();
         if (path.Contains(" | ", StringComparison.Ordinal)) { ShowError("Для перехода внутри архива используйте список и кнопку «Вверх»."); return; }
         if (Directory.Exists(path))
@@ -450,7 +455,7 @@ public sealed partial class MainWindow : Window
         else ShowError("Путь не найден. Проверьте путь и повторите переход.");
     }
 
-    private async Task OpenArchive(string path, bool remember)
+    private async Task<ArchiveResult?> OpenArchive(string path, bool remember, bool quietNotArchive = false)
     {
         ArchiveSession? candidate = null;
         var selectedProperties = SelectedProperties;
@@ -460,7 +465,7 @@ public sealed partial class MainWindow : Window
             var opened = ArchiveSession.Open(path, job);
             candidate = opened.Session;
             return candidate != null && opened.Result.Succeeded ? LoadSessionColumns(candidate, selectedProperties, job, loadedProperties) : opened.Result;
-        }, showSuccess: false);
+        }, showSuccess: false, quietNotArchive: quietNotArchive);
         if (!closing && result?.HResult == 0 && candidate != null)
         {
             if (remember && Location.Length > 0) history.Push(CurrentLocation);
@@ -470,6 +475,7 @@ public sealed partial class MainWindow : Window
         }
         else candidate?.Dispose();
         UpdateStatus();
+        return result;
     }
 
     private void CloseArchives()
@@ -562,7 +568,16 @@ public sealed partial class MainWindow : Window
             if (item.IsDirectory) { history.Push(CurrentLocation); archivePrefix = item.FullPath; ShowArchiveFolder(); }
             else await OpenNestedArchive(item);
         }
-        else await Navigate(item.FullPath);
+        else if (item.IsDirectory) await Navigate(item.FullPath);
+        else
+        {
+            var result = await OpenArchive(item.FullPath, true, quietNotArchive: true);
+            // Only the engine's explicit "not an archive" outcome permits the
+            // normal shell open. Password/data failures must stay in Arkvello.
+            if (!closing && result?.HResult == 1)
+                try { using var opened = Process.Start(new ProcessStartInfo(item.FullPath) { UseShellExecute = true, WorkingDirectory = directory }); }
+                catch (Exception error) { ShowError(error.Message); }
+        }
     }
     private async Task Parent()
     {
@@ -620,7 +635,7 @@ public sealed partial class MainWindow : Window
         await RunOperation(test ? "Проверка архива" : "Извлечение", job => target.Extract(indices, destination, job, test));
     }
 
-    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true, bool quietNotArchive = false, bool showResult = true)
+    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true, bool quietNotArchive = false, bool showResult = true, bool shellProgress = false)
     {
         if (busy) return null;
         ArchiveJob? created = null;
@@ -642,7 +657,8 @@ public sealed partial class MainWindow : Window
         lock (progressSync) { latestProgress = latestPath = null; }
         progressTimer.Start();
         allowProgressClose = false;
-        progressShown = progressDialog.ShowAsync().AsTask();
+        progressShown = shellProgress ? null : progressDialog.ShowAsync().AsTask();
+        if (shellProgress) Status.Text = title + "…";
         ArchiveResult? result = null;
         try
         {
@@ -664,7 +680,7 @@ public sealed partial class MainWindow : Window
         {
             activeJob = null; allowProgressClose = true;
             progressTimer.Stop(); FlushProgress();
-            progressDialog.Hide();
+            if (!shellProgress) progressDialog.Hide();
             if (progressShown != null) await progressShown;
             progressDialog = null; progressShown = null;
             // Detach reusable controls before the next operation's content is built.
@@ -675,9 +691,9 @@ public sealed partial class MainWindow : Window
         {
             string heading = result.Cancelled ? "Операция отменена" : result.Succeeded ? "Операция завершена" : result.HResult == 0 ? "Завершено с ошибками" : "Не удалось завершить операцию";
             var lines = new List<string>();
-            if (result.Cancelled) lines.Add("Уже созданные файлы и частично записанные данные могут остаться в папке назначения.");
+            if (result.Cancelled) lines.Add(shellProgress ? "Часть элементов уже могла быть удалена. Проверьте исходную папку и корзину." : "Уже созданные файлы и частично записанные данные могут остаться в папке назначения. Перемещённые элементы могли покинуть исходную папку.");
             else if (result.Succeeded) lines.Add("Ошибок не обнаружено.");
-            else if (result.HResult != 0) lines.Add($"Код: 0x{result.HResult:X8}. Проверьте архив, путь и пароль; повторите операцию после исправления.");
+            else if (result.HResult != 0) lines.Add($"Код: 0x{result.HResult:X8}. Проверьте пути, доступ и сообщения операции перед повтором.");
             foreach (var issue in result.Issues) lines.Add(IssueText(issue));
             var text = new TextBox { Text = string.Join("\n", lines), IsReadOnly = true, TextWrapping = TextWrapping.Wrap, BorderThickness = new(0), Background = new SolidColorBrush(Colors.Transparent), MaxHeight = 320, MinWidth = 420 };
             configuring = true;
@@ -764,9 +780,9 @@ public sealed partial class MainWindow : Window
             string IncomingSize() => (e.Flags & 2) != 0 ? $"{e.Size2:N0} Б" : "Размер неизвестен";
             body.Children.Add(new TextBlock { Text = "В папке назначения уже есть файл:", TextWrapping = TextWrapping.Wrap });
             body.Children.Add(new TextBlock { Text = e.Path1 + "\n" + ExistingSize() + FormatTime(e.Time1, (e.Flags & 4) != 0), TextWrapping = TextWrapping.Wrap });
-            body.Children.Add(new TextBlock { Text = "Из архива:\n" + e.Path2 + "\n" + IncomingSize() + FormatTime(e.Time2, (e.Flags & 8) != 0), TextWrapping = TextWrapping.Wrap });
+            body.Children.Add(new TextBlock { Text = "Исходный файл:\n" + e.Path2 + "\n" + IncomingSize() + FormatTime(e.Time2, (e.Flags & 8) != 0), TextWrapping = TextWrapping.Wrap });
             var answers = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, SelectedIndex = 0 };
-            foreach (string answer in new[] { "Пропустить", "Заменить", "Заменить все", "Пропустить все", "Переименовать извлекаемый файл" }) answers.Items.Add(answer);
+            foreach (string answer in new[] { "Пропустить", "Заменить", "Заменить все", "Пропустить все", "Переименовать входящий файл" }) answers.Items.Add(answer);
             AutomationProperties.SetName(answers, "Действие при совпадении имён"); body.Children.Add(answers);
             promptDialog = NewDialog("Файл уже существует", body, "Применить", "Отмена");
             promptDialog.DefaultButton = ContentDialogButton.Close;
@@ -855,9 +871,9 @@ public sealed partial class MainWindow : Window
         else if (archiveSession != null) await OpenArchive(archiveSession.RootPath, false);
         else await Navigate(directory, false);
         if (closing) return;
-        if (archiveSession != null && archiveSession.RootSourceStamp == stamp)
+        if (archiveSession == null || archiveSession.RootSourceStamp == stamp)
         {
-            archivePrefix = prefix; ShowArchiveFolder();
+            if (archiveSession != null) { archivePrefix = prefix; ShowArchiveFolder(); }
             foreach (var item in entries.Where(item => selected.Contains((item.FullPath, item.ArchiveIndex)))) if (!list.SelectedItems.Contains(item)) list.SelectedItems.Add(item);
             lastCurrentItem = entries.FirstOrDefault(item => item.FullPath == focused?.FullPath && item.ArchiveIndex == focused?.ArchiveIndex);
         }
@@ -881,12 +897,21 @@ public sealed partial class MainWindow : Window
     private async void OnAbout(object sender, RoutedEventArgs e) => await NewDialog("Arkvello", new TextBlock { Text = "Технический срез C# + WinUI 3 / C++.\nПросмотр папок и архивов, извлечение, проверка и интерактивные запросы.\nОстальные команды и полный набор параметров будут перенесены на следующих этапах.\nОсновано на 7-Zip 26.06. Лицензии находятся рядом с программой.", TextWrapping = TextWrapping.Wrap, MaxWidth = 480 }, close: "Закрыть").ShowAsync();
     private void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (busy || configuring) return;
+        if (suppressRenameKeyRelease && e.Key is VirtualKey.Enter or VirtualKey.Escape) { e.Handled = true; return; }
+        if (busy || configuring || renameBox != null) return;
         var alt = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
         if (alt && e.Key == VirtualKey.Left) { e.Handled = true; OnBack(sender, e); return; }
         var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
         if (ctrl && e.Key == VirtualKey.L) { Address.Focus(FocusState.Keyboard); Address.SelectAll(); e.Handled = true; }
         if (ctrl && e.Key == VirtualKey.R && !busy) { OnRefresh(sender, e); e.Handled = true; }
+    }
+
+    private void OnRootKeyUp(object sender, KeyRoutedEventArgs e)
+    {
+        // Rename replaces/removes its focused editor before key release. Keep
+        // that release from activating a new row or WinUI's fallback menu focus.
+        if (suppressRenameKeyRelease && e.Key is VirtualKey.Enter or VirtualKey.Escape)
+        { suppressRenameKeyRelease = false; e.Handled = true; }
     }
 
     private async Task MeasureList()

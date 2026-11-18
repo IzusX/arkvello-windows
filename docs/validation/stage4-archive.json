@@ -1,0 +1,401 @@
+{
+  "root": "C:\\Arkvello\\build\\bridge-checks-e8604b2107a743399fe1fd6737f359dd",
+  "checks": [
+    {
+      "name": "adjacent native payload loads",
+      "passed": true
+    },
+    {
+      "name": "missing native DLL has an actionable message",
+      "passed": true
+    },
+    {
+      "name": "invalid native DLL has an actionable message",
+      "passed": true
+    },
+    {
+      "name": "managed source hashing cooperatively pauses",
+      "passed": true
+    },
+    {
+      "name": "cancel wakes paused managed hashing",
+      "passed": true
+    },
+    {
+      "name": "open sample.7z",
+      "passed": true
+    },
+    {
+      "name": "typed Unicode item identity",
+      "passed": true
+    },
+    {
+      "name": "native schema exposes format property ids",
+      "passed": true
+    },
+    {
+      "name": "dynamic method column uses native indices",
+      "passed": true
+    },
+    {
+      "name": "native numeric properties keep numeric sort keys",
+      "passed": true
+    },
+    {
+      "name": "dynamic property loading cancels without partial presentation",
+      "passed": true
+    },
+    {
+      "name": "extract explicit index",
+      "passed": true
+    },
+    {
+      "name": "exact Unicode content and no unselected files",
+      "passed": true
+    },
+    {
+      "name": "conflict sizes 0",
+      "passed": true
+    },
+    {
+      "name": "overwrite response 0",
+      "passed": true
+    },
+    {
+      "name": "overwrite content 0",
+      "passed": true
+    },
+    {
+      "name": "conflict sizes 1",
+      "passed": true
+    },
+    {
+      "name": "overwrite response 1",
+      "passed": true
+    },
+    {
+      "name": "overwrite content 1",
+      "passed": true
+    },
+    {
+      "name": "conflict sizes 2",
+      "passed": true
+    },
+    {
+      "name": "overwrite response 2",
+      "passed": true
+    },
+    {
+      "name": "overwrite content 2",
+      "passed": true
+    },
+    {
+      "name": "conflict sizes 3",
+      "passed": true
+    },
+    {
+      "name": "overwrite response 3",
+      "passed": true
+    },
+    {
+      "name": "overwrite content 3",
+      "passed": true
+    },
+    {
+      "name": "conflict sizes 4",
+      "passed": true
+    },
+    {
+      "name": "overwrite response 4",
+      "passed": true
+    },
+    {
+      "name": "overwrite content 4",
+      "passed": true
+    },
+    {
+      "name": "auto rename incoming",
+      "passed": true
+    },
+    {
+      "name": "conflict sizes 5",
+      "passed": true
+    },
+    {
+      "name": "overwrite response 5",
+      "passed": true
+    },
+    {
+      "name": "overwrite content 5",
+      "passed": true
+    },
+    {
+      "name": "wrong header password is failure",
+      "passed": true
+    },
+    {
+      "name": "open encrypted.7z",
+      "passed": true
+    },
+    {
+      "name": "password retry then extract",
+      "passed": true
+    },
+    {
+      "name": "cancel password prompt",
+      "passed": true
+    },
+    {
+      "name": "cooperative cancel during actual work",
+      "passed": true
+    },
+    {
+      "name": "cancel leaves partial output explicitly",
+      "passed": true
+    },
+    {
+      "name": "acknowledged cooperative pause/resume",
+      "passed": true
+    },
+    {
+      "name": "paused native worker waits without completion",
+      "passed": true
+    },
+    {
+      "name": "cancel wakes paused worker and closes operation",
+      "passed": true
+    },
+    {
+      "name": "invalid item identity rejected",
+      "passed": true
+    },
+    {
+      "name": "export exact native index to owned file",
+      "passed": true
+    },
+    {
+      "name": "export never overwrites existing output",
+      "passed": true
+    },
+    {
+      "name": "Agent stages replacement by original index",
+      "passed": true
+    },
+    {
+      "name": "staging leaves original archive untouched",
+      "passed": true
+    },
+    {
+      "name": "open staged.7z",
+      "passed": true
+    },
+    {
+      "name": "Agent replacement retains original item names",
+      "passed": true
+    },
+    {
+      "name": "Agent replacement data round trip",
+      "passed": true
+    },
+    {
+      "name": "plain replacement remains unencrypted",
+      "passed": true
+    },
+    {
+      "name": "cancel update during actual archive writing",
+      "passed": true
+    },
+    {
+      "name": "cancel update leaves original readable",
+      "passed": true
+    },
+    {
+      "name": "update never overwrites existing output",
+      "passed": true
+    },
+    {
+      "name": "cancel before update leaves source and no staged file",
+      "passed": true
+    },
+    {
+      "name": "open duplicates.tar",
+      "passed": true
+    },
+    {
+      "name": "duplicate paths retain distinct indices",
+      "passed": true
+    },
+    {
+      "name": "replace second duplicate through Agent",
+      "passed": true
+    },
+    {
+      "name": "virtual input owns its bytes after managed buffer changes",
+      "passed": true
+    },
+    {
+      "name": "virtual input exports exact duplicate native index",
+      "passed": true
+    },
+    {
+      "name": "virtual update explicitly requires file-backed route",
+      "passed": true
+    },
+    {
+      "name": "virtual input cancels before copying bytes",
+      "passed": true
+    },
+    {
+      "name": "open duplicates-updated.tar",
+      "passed": true
+    },
+    {
+      "name": "first duplicate unaffected",
+      "passed": true
+    },
+    {
+      "name": "second duplicate changed independently",
+      "passed": true
+    },
+    {
+      "name": "open encrypted.7z",
+      "passed": true
+    },
+    {
+      "name": "stage encrypted replacement",
+      "passed": true
+    },
+    {
+      "name": "encrypted header remains protected after replacement",
+      "passed": true
+    },
+    {
+      "name": "changed encrypted item still requires password",
+      "passed": true
+    },
+    {
+      "name": "root workspace session opens",
+      "passed": true
+    },
+    {
+      "name": "cancel child open retains parent",
+      "passed": true
+    },
+    {
+      "name": "bad child retains parent",
+      "passed": true
+    },
+    {
+      "name": "three levels retain parent and index identity",
+      "passed": true
+    },
+    {
+      "name": "stage nested edit through Agent chain",
+      "passed": true
+    },
+    {
+      "name": "nested stage never mutates source",
+      "passed": true
+    },
+    {
+      "name": "nested edit survives reopening entire root chain",
+      "passed": true
+    },
+    {
+      "name": "closed nested sessions clean only owned temporary files",
+      "passed": true
+    },
+    {
+      "name": "editor handoff exports exact duplicate index and journals recovery",
+      "passed": true
+    },
+    {
+      "name": "unmodified editor handoff detects no changes",
+      "passed": true
+    },
+    {
+      "name": "editor detects content change",
+      "passed": true
+    },
+    {
+      "name": "editor write lease rejects a half-written file",
+      "passed": true
+    },
+    {
+      "name": "editor stages validated nested root",
+      "passed": true
+    },
+    {
+      "name": "commit refuses live source session",
+      "passed": true
+    },
+    {
+      "name": "commit detects an editor save after staging",
+      "passed": true
+    },
+    {
+      "name": "failed replacement preserves source and recovery",
+      "passed": true
+    },
+    {
+      "name": "cancelled commit leaves original intact",
+      "passed": true
+    },
+    {
+      "name": "commit detects competing same-length source",
+      "passed": true
+    },
+    {
+      "name": "atomic commit retains exact original backup and recovery",
+      "passed": true
+    },
+    {
+      "name": "committed nested editor content survives full reopen",
+      "passed": true
+    },
+    {
+      "name": "open memory.rar",
+      "passed": true
+    },
+    {
+      "name": "real decoder memory request response 1",
+      "passed": true
+    },
+    {
+      "name": "real decoder memory request response 4",
+      "passed": true
+    },
+    {
+      "name": "real decoder memory request response -1",
+      "passed": true
+    },
+    {
+      "name": "managed exception contained at ABI",
+      "passed": true
+    },
+    {
+      "name": "invalid archive has explicit failure",
+      "passed": true
+    },
+    {
+      "name": "open corrupt.7z",
+      "passed": true
+    },
+    {
+      "name": "item error prevents false success",
+      "passed": true
+    },
+    {
+      "name": "open large-100000.tar",
+      "passed": true
+    },
+    {
+      "name": "real C\u002B\u002B archive list returns 100000 typed entries",
+      "passed": true
+    },
+    {
+      "name": "cancelled listing rejected",
+      "passed": true
+    }
+  ]
+}

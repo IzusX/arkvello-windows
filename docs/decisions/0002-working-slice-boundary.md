@@ -4,8 +4,9 @@
 under the user-accepted [C# + WinUI 3 stack](0001-ui-stack.md). This is not a
 claim that stage 3 or release validation is complete.
 The 2026-11-18 [decision 0003](0003-operation-ownership-and-recovery.md)
-supersedes this initial ABI 1/deployment/editor checkpoint: current ABI is 2,
+supersedes this initial ABI 1/deployment/editor checkpoint: that checkpoint's ABI is 2,
 self-contained development publishing and bounded editor commit now exist.
+Stage 4 [decision 0004](0004-filesystem-operations.md) adds filesystem services with ABI 3.
 Statements below describe the original slice unless explicitly dated later.
 
 ## Selected for the slice
