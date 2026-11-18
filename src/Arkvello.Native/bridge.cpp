@@ -11,6 +11,7 @@
 #include "../../CPP/Windows/PropVariant.h"
 #include "../../CPP/7zip/UI/Common/ArchiveExtractCallback.h"
 #include "../../CPP/7zip/UI/Agent/Agent.h"
+#include "../../CPP/7zip/UI/Common/PropIDUtils.h"
 
 HINSTANCE g_hInstance = nullptr;
 // Agent exposes comparison methods through its folder vtable. The slice's
@@ -32,6 +33,7 @@ struct Job {
   std::mutex mutex, callbackMutex;
   std::condition_variable wake;
   std::atomic<UInt64> total{0};
+  UInt64 memoryLimit = (UInt64)(Int64)-1;
   HRESULT emit(AvEvent e, wchar_t *reply = nullptr, uint32_t capacity = 0, int *answer = nullptr) {
     if (cancelled) return E_ABORT;
     std::lock_guard<std::mutex> lock(callbackMutex);
@@ -67,6 +69,26 @@ struct Job {
     SecureZeroMemory(reply, sizeof(reply));
     return h;
   }
+  HRESULT memory(UInt32 flags, UInt32 indexType, UInt32 index, const wchar_t *path,
+    UInt64 required, UInt64 *allowed, UInt32 *answer) {
+    RINOK(check())
+    if (flags & NRequestMemoryUseFlags::k_IsReport) {
+      AvEvent e{}; e.kind = 5; e.code = 0x101; e.path1 = path;
+      e.flags = flags; e.size1 = required; e.size2 = *allowed;
+      return emit(e);
+    }
+    if (memoryLimit != (UInt64)(Int64)-1) *allowed = memoryLimit;
+    if (required <= *allowed) { *answer = NRequestMemoryAnswerFlags::k_Allow; return S_OK; }
+    AvEvent e{}; e.kind = 8; e.flags = flags; e.code = indexType;
+    e.index = index; e.path1 = path; e.size1 = required; e.size2 = *allowed;
+    int response = 0;
+    RINOK(emit(e, nullptr, 0, &response))
+    if (response == 1) { *allowed = required; *answer = NRequestMemoryAnswerFlags::k_Allow; return S_OK; }
+    if (response != 4 || !(flags & NRequestMemoryUseFlags::k_SkipArc_IsExpected)) return E_ABORT;
+    *answer = NRequestMemoryAnswerFlags::k_SkipArc | NRequestMemoryAnswerFlags::k_Limit_Exceeded;
+    e.kind = 5; e.code = 0x101;
+    return emit(e); // A skipped archive must not become clean success.
+  }
 };
 
 struct Session {
@@ -75,9 +97,11 @@ struct Session {
   CAgent *agent = new CAgent(codecs);
   CMyComPtr<IInFolderArchive> agentOwner;
   CArchiveLink &link;
+  CMyComPtr<IInStream> memoryStream;
+  bool virtualInput = false;
   Session() : codecsOwner(static_cast<ICompressCodecsInfo *>(codecs)),
     agentOwner(agent), link(agent->_archiveLink) {}
-  ~Session() { link.Release(); agentOwner.Release(); codecs->CloseLibs(); }
+  ~Session() { link.Release(); agentOwner.Release(); memoryStream.Release(); codecs->CloseLibs(); }
 };
 
 class OpenCallback final : public IOpenCallbackUI {
@@ -92,15 +116,17 @@ public:
 };
 
 class ExtractCallback final : public IFolderArchiveExtractCallback,
-  public ICryptoGetTextPassword, public CMyUnknownImp {
+  public ICryptoGetTextPassword, public IArchiveRequestMemoryUseCallback, public CMyUnknownImp {
   Z7_COM_QI_BEGIN2(IFolderArchiveExtractCallback)
   Z7_COM_QI_ENTRY(ICryptoGetTextPassword)
+  Z7_COM_QI_ENTRY(IArchiveRequestMemoryUseCallback)
   Z7_COM_QI_END
   Z7_COM_ADDREF_RELEASE
   Job &job;
   UString currentPath;
 public:
   explicit ExtractCallback(Job &value) : job(value) {}
+  Z7_COM7F_IMF(RequestMemoryUse(UInt32 f, UInt32 t, UInt32 i, const wchar_t *p, UInt64 r, UInt64 *a, UInt32 *v)) { return job.memory(f, t, i, p, r, a, v); }
   Z7_COM7F_IMF(SetTotal(UInt64 total)) { job.total = total; return job.check(); }
   Z7_COM7F_IMF(SetCompleted(const UInt64 *value)) { return job.progress(value); }
   Z7_COM7F_IMF(CryptoGetTextPassword(BSTR *password)) { return job.password(password); }
@@ -158,9 +184,10 @@ HRESULT CheckFile(Session &s, UInt32 index) {
 }
 
 class ExportCallback final : public IArchiveExtractCallback,
-  public ICryptoGetTextPassword, public CMyUnknownImp {
+  public ICryptoGetTextPassword, public IArchiveRequestMemoryUseCallback, public CMyUnknownImp {
   Z7_COM_QI_BEGIN2(IArchiveExtractCallback)
   Z7_COM_QI_ENTRY(ICryptoGetTextPassword)
+  Z7_COM_QI_ENTRY(IArchiveRequestMemoryUseCallback)
   Z7_COM_QI_END
   Z7_COM_ADDREF_RELEASE
   Job &job;
@@ -169,6 +196,7 @@ class ExportCallback final : public IArchiveExtractCallback,
   CMyComPtr<ISequentialOutStream> stream;
 public:
   ExportCallback(Job &j, UInt32 i, COutFileStream *f) : job(j), index(i), file(f), stream(f) {}
+  Z7_COM7F_IMF(RequestMemoryUse(UInt32 f, UInt32 t, UInt32 i, const wchar_t *p, UInt64 r, UInt64 *a, UInt32 *v)) { return job.memory(f, t, i, p, r, a, v); }
   bool GotStream = false;
   bool Finished = false;
   Z7_COM7F_IMF(SetTotal(UInt64 n)) { job.total = n; return job.check(); }
@@ -235,7 +263,7 @@ public:
 };
 }
 
-uint32_t av_abi() { return 1; }
+uint32_t av_abi() { return 2; }
 void *av_job_create(AvCallback callback, void *context) {
   try { return new Job{callback, context}; } catch (...) { return nullptr; }
 }
@@ -244,18 +272,24 @@ void av_job_cancel(void *value) {
   { std::lock_guard<std::mutex> lock(j.mutex); j.cancelled = true; }
   j.wake.notify_all();
 }
+int32_t av_job_check(void *value) {
+  try { return value ? static_cast<Job *>(value)->check() : E_INVALIDARG; }
+  catch (...) { return E_FAIL; }
+}
 void av_job_pause(void *value, int pause) {
   auto &j = *static_cast<Job *>(value);
   { std::lock_guard<std::mutex> lock(j.mutex); j.paused = pause != 0; }
   j.wake.notify_all();
 }
 void av_job_close(void *value) { delete static_cast<Job *>(value); }
+void av_job_memory_limit(void *value, uint64_t bytes) { static_cast<Job *>(value)->memoryLimit = bytes; }
 void av_close(void *value) { delete static_cast<Session *>(value); }
 
-int32_t av_open(const wchar_t *path, void *value, void **result) {
+static int32_t OpenService(const wchar_t *path, void *value, void **result, const Byte *bytes = nullptr, size_t size = 0) {
   if (!path || !value || !result) return E_INVALIDARG;
   *result = nullptr;
   try {
+    RINOK(static_cast<Job *>(value)->check())
     auto session = std::make_unique<Session>();
     // Load only our adjacent codec DLL, never registry-installed 7-Zip or plugins.
     wchar_t module[32768];
@@ -274,6 +308,12 @@ int32_t av_open(const wchar_t *path, void *value, void **result) {
     options.excludedFormats = &excluded;
     options.codecs = session->codecs;
     options.filePath = path;
+    if (bytes) {
+      auto *stream = new CBufferInStream;
+      session->memoryStream = stream;
+      stream->Buf.CopyFrom(bytes, size); stream->Init();
+      options.stream = stream; session->virtualInput = true;
+    }
     options.props = nullptr;
     OpenCallback callback(*static_cast<Job *>(value));
     RINOK(session->link.Open_Strict(options, &callback))
@@ -290,6 +330,12 @@ int32_t av_open(const wchar_t *path, void *value, void **result) {
     return S_OK;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; }
     catch (...) { return E_FAIL; }
+}
+
+int32_t av_open(const wchar_t *path, void *value, void **result) { return OpenService(path, value, result); }
+int32_t av_open_memory(const uint8_t *data, uint64_t size, const wchar_t *name, void *job, void **result) {
+  if (!data || !size || size > (64u << 20)) { if (result) *result = nullptr; return E_INVALIDARG; }
+  return OpenService(name, job, result, data, (size_t)size);
 }
 
 int32_t av_list(void *sessionValue, void *jobValue) {
@@ -319,6 +365,54 @@ int32_t av_list(void *sessionValue, void *jobValue) {
     }
     return S_OK;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
+}
+
+int32_t av_columns(void *sessionValue, void *jobValue) {
+  if (!sessionValue || !jobValue) return E_INVALIDARG;
+  try {
+    auto *arc = static_cast<Session *>(sessionValue)->link.GetArchive();
+    auto &job = *static_cast<Job *>(jobValue);
+    UInt32 count = 0; RINOK(arc->GetNumberOfProperties(&count))
+    for (UInt32 i = 0; i < count; ++i) {
+      RINOK(job.check())
+      CMyComBSTR name; PROPID id; VARTYPE type;
+      RINOK(arc->GetPropertyInfo(i, &name, &id, &type))
+      AvEvent e{}; e.kind = 9; e.code = id; e.flags = type; e.path1 = name;
+      RINOK(job.emit(e))
+    }
+    return S_OK;
+  } catch (...) { return E_FAIL; }
+}
+int32_t av_property(void *sessionValue, void *jobValue, uint32_t property) {
+  if (!sessionValue || !jobValue) return E_INVALIDARG;
+  try {
+    auto *arc = static_cast<Session *>(sessionValue)->link.GetArchive();
+    auto &job = *static_cast<Job *>(jobValue);
+    UInt32 count = 0; RINOK(arc->GetNumberOfItems(&count))
+    for (UInt32 i = 0; i < count; ++i) {
+      RINOK(job.check())
+      NWindows::NCOM::CPropVariant value; RINOK(arc->GetProperty(i, property, &value))
+      UString text; ConvertPropertyToString2(text, value, property);
+      AvEvent e{}; e.kind = 10; e.code = property; e.index = i; e.flags = value.vt; e.path1 = text;
+      switch (value.vt) {
+        case VT_UI1: e.size1 = value.bVal; break;
+        case VT_UI2: e.size1 = value.uiVal; break;
+        case VT_UI4: e.size1 = value.ulVal; break;
+        case VT_UI8: e.size1 = value.uhVal.QuadPart; break;
+        case VT_I1: e.size1 = (UInt64)(Int64)value.cVal; break;
+        case VT_I2: e.size1 = (UInt64)(Int64)value.iVal; break;
+        case VT_I4: e.size1 = (UInt64)(Int64)value.lVal; break;
+        case VT_I8: e.size1 = (UInt64)value.hVal.QuadPart; break;
+        case VT_BOOL: e.size1 = value.boolVal != VARIANT_FALSE; break;
+        case VT_FILETIME: e.size1 = (UInt64(value.filetime.dwHighDateTime) << 32) | value.filetime.dwLowDateTime; break;
+        case VT_R4: memcpy(&e.size1, &value.fltVal, sizeof(value.fltVal)); break;
+        case VT_R8: memcpy(&e.size1, &value.dblVal, sizeof(value.dblVal)); break;
+        default: break;
+      }
+      RINOK(job.emit(e))
+    }
+    return S_OK;
+  } catch (...) { return E_FAIL; }
 }
 
 int32_t av_extract(void *sessionValue, void *jobValue, const uint32_t *indices,
@@ -385,6 +479,7 @@ int32_t av_replace_item(void *sessionValue, void *jobValue, uint32_t index,
   if (!sessionValue || !jobValue || !replacement || !*replacement || !output || !*output) return E_INVALIDARG;
   try {
     auto &session = *static_cast<Session *>(sessionValue);
+    if (session.virtualInput) return E_NOTIMPL;
     auto &job = *static_cast<Job *>(jobValue);
     RINOK(job.check())
     RINOK(CheckFile(session, index))

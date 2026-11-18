@@ -15,6 +15,7 @@ public sealed class ArchiveSession : IDisposable
     public string PhysicalPath { get; }
     public string DisplayPath { get; }
     public string RootPath => Parent?.RootPath ?? PhysicalPath;
+    public ArchiveSourceStamp RootSourceStamp { get; private set; } = null!;
     public bool IsClosed => Archive.IsClosed;
     private ArchiveSession(NativeArchive archive, IReadOnlyList<ArchiveEntry> entries,
         string path, string display, ArchiveSession? parent, uint? parentIndex,
@@ -23,8 +24,22 @@ public sealed class ArchiveSession : IDisposable
         Archive = archive; Entries = entries; PhysicalPath = path; DisplayPath = display;
         Parent = parent; ParentIndex = parentIndex; ParentFolder = parentFolder; this.temporary = temporary;
     }
-    public static (ArchiveSession? Session, ArchiveResult Result) Open(string path, ArchiveJob job) =>
-        OpenLevel(Path.GetFullPath(path), Path.GetFullPath(path), null, null, "", null, job);
+    public static (ArchiveSession? Session, ArchiveResult Result) Open(string path, ArchiveJob job)
+    {
+        var stamp = ArchiveSourceStamp.Capture(path, job);
+        var opened = OpenLevel(Path.GetFullPath(path), Path.GetFullPath(path), null, null, "", null, job);
+        if (opened.Session != null)
+        {
+            try
+            {
+                if (ArchiveSourceStamp.Capture(path, job) != stamp)
+                    throw new IOException("Архив изменился во время открытия. Повторите попытку.");
+                opened.Session.RootSourceStamp = stamp;
+            }
+            catch { opened.Session.Dispose(); throw; }
+        }
+        return opened;
+    }
 
     private static (ArchiveSession? Session, ArchiveResult Result) OpenLevel(string path, string display,
         ArchiveSession? parent, uint? index, string folder, ArchiveTemporaryFile? temporary, ArchiveJob job)
@@ -36,6 +51,7 @@ public sealed class ArchiveSession : IDisposable
             if (candidate == null) return (null, opened.Result);
             var entries = candidate.ReadEntries(job);
             var session = new ArchiveSession(candidate, entries, path, display, parent, index, folder, temporary);
+            if (parent != null) session.RootSourceStamp = parent.RootSourceStamp;
             candidate = null;
             return (session, new(0, job.Issues));
         }

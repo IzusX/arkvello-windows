@@ -3,6 +3,8 @@
   <ItemGroup>
     <Compile Include="..\..\src\Arkvello.WinUI\Services\NativeArchive.cs" Link="NativeArchive.cs"/>
     <Compile Include="..\..\src\Arkvello.WinUI\Services\ArchiveSession.cs" Link="ArchiveSession.cs"/>
+    <Compile Include="..\..\src\Arkvello.WinUI\Services\ArchiveEdit.cs" Link="ArchiveEdit.cs"/>
+    <Compile Include="..\..\src\Arkvello.WinUI\Services\NativeDependencies.cs" Link="NativeDependencies.cs"/>
     <Content Include="..\..\build\native-bridge\Arkvello.Native.dll;..\..\build\windows-x64\7z.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest"/>
   </ItemGroup>
 </Project>

@@ -37,11 +37,47 @@ NativeArchive Open(string name, string? password = null)
 }
 try
 {
+    Check("adjacent native payload loads", NativeDependencies.Check(AppContext.BaseDirectory) == null);
+    Check("missing native DLL has an actionable message", NativeDependencies.Check(root)?.Contains("Arkvello.Native.dll", StringComparison.Ordinal) == true);
+    string badPayload = Path.Combine(root, "bad-payload"); Directory.CreateDirectory(badPayload);
+    File.WriteAllText(Path.Combine(badPayload, "Arkvello.Native.dll"), "not a Windows DLL");
+    Check("invalid native DLL has an actionable message", NativeDependencies.Check(badPayload)?.Contains("Windows x64", StringComparison.Ordinal) == true);
     Make("sample.7z"); Make("encrypted.7z", "-pStage3FixtureOnly", "-mhe=on");
+    using (var pausedHash = new ManualResetEventSlim())
+    using (var hashJob = new ArchiveJob(e => { if (e.Kind == ArchiveEventKind.Paused) pausedHash.Set(); return new(); }))
+    {
+        hashJob.Pause(true);
+        var hashing = Task.Run(() => ArchiveSourceStamp.Capture(Path.Combine(root, "sample.7z"), hashJob));
+        try
+        {
+            Check("managed source hashing cooperatively pauses", pausedHash.Wait(TimeSpan.FromSeconds(5)) && !hashing.IsCompleted);
+            hashJob.Cancel();
+            try { hashing.GetAwaiter().GetResult(); Check("cancel wakes paused managed hashing", false); }
+            catch (OperationCanceledException) { Check("cancel wakes paused managed hashing", true); }
+        }
+        finally { hashJob.Cancel(); try { hashing.GetAwaiter().GetResult(); } catch (OperationCanceledException) { } }
+    }
     using var arc = Open("sample.7z");
     var items = arc.ReadEntries();
     Check("typed Unicode item identity", items.Any(e => e.Path == "точный [1].txt" && e.Size > 0));
     var item = items.Single(e => e.Path == "точный [1].txt");
+    Check("native schema exposes format property ids", arc.ReadColumns().Any(c => c.Id == 22));
+    using (var propertyJob = new ArchiveJob(_ => new()))
+    {
+        var property = arc.ReadProperty(22, propertyJob);
+        Check("dynamic method column uses native indices", property.Result.Succeeded && property.Values[item.Index].Text.Contains("Copy", StringComparison.OrdinalIgnoreCase));
+    }
+    using (var propertyJob = new ArchiveJob(_ => new()))
+    {
+        var sizes = arc.ReadProperty(7, propertyJob);
+        Check("native numeric properties keep numeric sort keys", sizes.Result.Succeeded && Equals(sizes.Values[item.Index].SortKey, (decimal)item.Size!.Value));
+    }
+    using (var propertyJob = new ArchiveJob(_ => new()))
+    {
+        propertyJob.Cancel();
+        var property = arc.ReadProperty(22, propertyJob);
+        Check("dynamic property loading cancels without partial presentation", property.Result.Cancelled && property.Values.Count == 0);
+    }
     string dest = Path.Combine(root, "output");
     using (var job = new ArchiveJob(_ => new())) Check("extract explicit index", arc.Extract([item.Index], dest, job).Succeeded);
     Check("exact Unicode content and no unselected files", File.ReadAllText(Path.Combine(dest, item.Path)) == "Содержимое Ω" && Directory.GetFiles(dest).Length == 1);
@@ -141,6 +177,22 @@ try
         Check("duplicate paths retain distinct indices", duplicates.ReadEntries().Count(e => e.Path == "same.txt") == 2);
         using (var job = new ArchiveJob(_ => new())) Check("replace second duplicate through Agent", duplicates.ReplaceItem(1, exported, Path.Combine(root, "duplicates-updated.tar"), job).Succeeded);
     }
+    using (var memoryJob = new ArchiveJob(_ => new()))
+    {
+        byte[] virtualBytes = File.ReadAllBytes(Path.Combine(root, "duplicates.tar"));
+        var openedMemory = NativeArchive.OpenMemory(virtualBytes, "virtual.tar", memoryJob);
+        using var virtualArchive = openedMemory.Archive;
+        Array.Clear(virtualBytes); GC.Collect(); GC.WaitForPendingFinalizers();
+        Check("virtual input owns its bytes after managed buffer changes", openedMemory.Result.Succeeded && virtualArchive!.ReadEntries().Count == 2);
+        string virtualOutput = Path.Combine(root, "virtual-second.txt");
+        Check("virtual input exports exact duplicate native index", virtualArchive!.ExportItem(1, virtualOutput, memoryJob).Succeeded && File.ReadAllText(virtualOutput) == "second duplicate");
+        Check("virtual update explicitly requires file-backed route", virtualArchive.ReplaceItem(1, exported, Path.Combine(root, "virtual-update.tar"), memoryJob).HResult == unchecked((int)0x80004001));
+    }
+    using (var memoryJob = new ArchiveJob(_ => new()))
+    {
+        memoryJob.Cancel();
+        Check("virtual input cancels before copying bytes", NativeArchive.OpenMemory(File.ReadAllBytes(Path.Combine(root, "duplicates.tar")), "virtual.tar", memoryJob).Result.Cancelled);
+    }
     using (var duplicates = Open("duplicates-updated.tar"))
     {
         using (var job = new ArchiveJob(_ => new())) Check("first duplicate unaffected", duplicates.ExportItem(0, Path.Combine(root, "dup-first.txt"), job).Succeeded && File.ReadAllText(Path.Combine(root, "dup-first.txt")) == "first duplicate");
@@ -219,6 +271,97 @@ try
         Check("nested edit survives reopening entire root chain", reopenedLeaf.Archive.ExportItem(1, changed, verifyJob).Succeeded && File.ReadAllText(changed) == "Edited Ω with different length");
     }
     Check("closed nested sessions clean only owned temporary files", !Directory.EnumerateFiles(scratch, "*", SearchOption.AllDirectories).Any());
+    // Full editor hand-off: original identity, nested staging, atomic replacement,
+    // durable backup and conflicts. Every file below is a disposable fixture.
+    string editTarget = Path.Combine(root, "edit-target.tar"); File.WriteAllBytes(editTarget, nested);
+    using (var rootJob = new ArchiveJob(_ => new()))
+    using (var editRoot = ArchiveSession.Open(editTarget, rootJob).Session!)
+    using (var middleJob = new ArchiveJob(_ => new()))
+    using (var editMiddle = editRoot.OpenChild(0, middleJob, temporaryRoot: scratch).Session!)
+    using (var leafJob = new ArchiveJob(_ => new()))
+    using (var editLeaf = editMiddle.OpenChild(0, leafJob, temporaryRoot: scratch).Session!)
+    using (var editJob = new ArchiveJob(_ => new()))
+    {
+        var handoff = ArchiveEdit.Begin(editLeaf, 1, editJob, scratch);
+        var edit = handoff.Edit!;
+        Check("editor handoff exports exact duplicate index and journals recovery", handoff.Result.Succeeded && File.ReadAllText(edit.WorkingFile.Path) == "second duplicate" && File.Exists(Path.Combine(edit.RecoveryPath, "recovery.json")));
+        Check("unmodified editor handoff detects no changes", !edit.HasChangesSinceExport());
+        File.WriteAllText(edit.WorkingFile.Path, "editor nested result Ω");
+        Check("editor detects content change", edit.HasChangesSinceExport());
+        using (var locked = new FileStream(edit.WorkingFile.Path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            try { edit.Stage(editJob); Check("editor write lease rejects a half-written file", false); }
+            catch (IOException) { Check("editor write lease rejects a half-written file", true); }
+        }
+        var prepared = edit.Stage(editJob);
+        using var stagedEdit = prepared.File!;
+        Check("editor stages validated nested root", prepared.Result.Succeeded && File.ReadAllBytes(editTarget).SequenceEqual(nested));
+        try { edit.Commit(stagedEdit); Check("commit refuses live source session", false); }
+        catch (InvalidOperationException) { Check("commit refuses live source session", true); }
+        editLeaf.Dispose(); editMiddle.Dispose(); editRoot.Dispose();
+        File.WriteAllText(edit.WorkingFile.Path, "editor saved again after staging");
+        try { edit.Commit(stagedEdit); Check("commit detects an editor save after staging", false); }
+        catch (IOException) { Check("commit detects an editor save after staging", File.ReadAllBytes(editTarget).SequenceEqual(nested) && File.ReadAllText(edit.WorkingFile.Path) == "editor saved again after staging"); }
+        File.WriteAllText(edit.WorkingFile.Path, "editor nested result Ω");
+        using (var blocked = new FileStream(editTarget, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            try { edit.Commit(stagedEdit); Check("failed replacement preserves source and recovery", false); }
+            catch (IOException) { Check("failed replacement preserves source and recovery", File.ReadAllBytes(editTarget).SequenceEqual(nested) && File.Exists(edit.WorkingFile.Path)); }
+        }
+        using (var cancelled = new ArchiveJob(_ => new()))
+        {
+            cancelled.Cancel();
+            try { edit.Commit(stagedEdit, cancelled); Check("cancelled commit leaves original intact", false); }
+            catch (OperationCanceledException) { Check("cancelled commit leaves original intact", File.ReadAllBytes(editTarget).SequenceEqual(nested)); }
+        }
+        // Same length, different contents: timestamp/size alone would miss this.
+        byte[] competing = nested.ToArray(); competing[^1] ^= 1; File.WriteAllBytes(editTarget, competing);
+        try { edit.Commit(stagedEdit); Check("commit detects competing same-length source", false); }
+        catch (IOException) { Check("commit detects competing same-length source", File.ReadAllBytes(editTarget).SequenceEqual(competing) && File.Exists(edit.WorkingFile.Path)); }
+        File.WriteAllBytes(editTarget, nested);
+        string backup = edit.Commit(stagedEdit);
+        Check("atomic commit retains exact original backup and recovery", File.ReadAllBytes(backup).SequenceEqual(nested) && File.Exists(Path.Combine(edit.RecoveryPath, "recovery.json")));
+        using var verifyRootJob = new ArchiveJob(_ => new());
+        using var verifiedRoot = ArchiveSession.Open(editTarget, verifyRootJob).Session!;
+        using var verifyMiddleJob = new ArchiveJob(_ => new());
+        using var verifiedMiddle = verifiedRoot.OpenChild(0, verifyMiddleJob, temporaryRoot: scratch).Session!;
+        using var verifyLeafJob = new ArchiveJob(_ => new());
+        using var verifiedLeaf = verifiedMiddle.OpenChild(0, verifyLeafJob, temporaryRoot: scratch).Session!;
+        using var verifyBytesJob = new ArchiveJob(_ => new());
+        string verifiedText = Path.Combine(root, "editor-verified.txt");
+        Check("committed nested editor content survives full reopen", verifiedLeaf.Archive.ExportItem(1, verifiedText, verifyBytesJob).Succeeded && File.ReadAllText(verifiedText) == "editor nested result Ω");
+    }
+    // RAR5 is the upstream handler implementing interactive memory requests.
+    // A valid stored item declares a 2 GiB dictionary; Copy does not allocate it.
+    // This exercises the real format callback without a multi-GiB allocation.
+    byte[] Var(ulong value)
+    {
+        var data = new List<byte>();
+        do { byte part = (byte)(value & 127); value >>= 7; data.Add((byte)(part | (value != 0 ? 128 : 0))); } while (value != 0);
+        return data.ToArray();
+    }
+    byte[] RarBlock(byte[] header)
+    {
+        byte[] content = Var((ulong)header.Length).Concat(header).ToArray();
+        uint crc = uint.MaxValue;
+        foreach (byte value in content) { crc ^= value; for (int bit = 0; bit < 8; bit++) crc = (crc >> 1) ^ ((crc & 1) != 0 ? 0xedb88320u : 0); }
+        return BitConverter.GetBytes(~crc).Concat(content).ToArray();
+    }
+    byte[] rarName = System.Text.Encoding.UTF8.GetBytes("memory.txt");
+    byte[] rarData = System.Text.Encoding.UTF8.GetBytes("bounded memory callback fixture");
+    byte[] rarHeader = new byte[] { 2, 2 }.Concat(Var((ulong)rarData.Length)).Concat(new byte[] { 0 }).Concat(Var((ulong)rarData.Length)).Concat(new byte[] { 0 }).Concat(Var(14UL << 10)).Concat(new byte[] { 0 }).Concat(Var((ulong)rarName.Length)).Concat(rarName).ToArray();
+    File.WriteAllBytes(Path.Combine(root, "memory.rar"), new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0 }.Concat(RarBlock([1, 0, 0])).Concat(RarBlock(rarHeader)).Concat(rarData).Concat(RarBlock([5, 0, 0])).ToArray());
+    using (var memoryArc = Open("memory.rar"))
+    {
+        foreach (int response in new[] { 1, 4, -1 })
+        {
+            bool asked = false;
+            using var memoryJob = new ArchiveJob(e => { if (e.Kind == ArchiveEventKind.Memory) { asked = e.Size1 > e.Size2; return new(response); } return new(); });
+            memoryJob.SetMemoryLimit(1);
+            var outcome = memoryArc.Extract(memoryArc.ReadEntries().Select(e => e.Index), "", memoryJob, test: true);
+            Check("real decoder memory request response " + response, asked && (response == 1 ? outcome.Succeeded : response == -1 ? outcome.Cancelled : !outcome.Succeeded && outcome.Issues.Any(e => e.Code == 0x101)));
+        }
+    }
     using (var job = new ArchiveJob(_ => throw new InvalidOperationException("callback fixture")))
         Check("managed exception contained at ABI", NativeArchive.Open(Path.Combine(root, "encrypted.7z"), job).Result.Cancelled && job.CallbackError != null);
     File.WriteAllText(Path.Combine(root, "not-archive.7z"), "not an archive");
