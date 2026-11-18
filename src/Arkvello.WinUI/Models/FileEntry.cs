@@ -3,7 +3,7 @@ namespace Arkvello.Models;
 
 public sealed record FileEntry(string Identity, string Name, string FullPath, bool IsDirectory,
     ulong? Size, DateTime? Modified, uint? ArchiveIndex = null, uint[]? DescendantIndices = null,
-    IReadOnlyDictionary<string, ArchiveProperty>? Properties = null)
+    IReadOnlyDictionary<string, ArchiveProperty>? Properties = null, FileAttributes Attributes = FileAttributes.Normal)
 {
     public string SizeText => Size is { } size ? size.ToString("N0") + " Б" : "";
     public string ModifiedText => Modified?.ToString("dd.MM.yyyy HH:mm") ?? "";

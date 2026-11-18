@@ -91,6 +91,7 @@ public sealed partial class MainWindow
             catch (NotSupportedException) { Record("text paste cannot invoke a file operation", !busy && !configuring); }
             var notArchive = await OpenArchive(renamedPath, false, quietNotArchive: true);
             Record("plain file reaches explicit non-archive result without launching an app", notArchive?.HResult == 1 && archiveSession == null && directory == fixture && !busy);
+            await VerifyShellIcons(fixture, renamedPath, target, Record);
             foreach (var theme in new[] { ElementTheme.Light, ElementTheme.Dark })
             {
                 WindowHost.RequestedTheme = theme; RefreshColors(); await FocusItem(renamedPath); Notice.IsOpen = false;
@@ -104,6 +105,7 @@ public sealed partial class MainWindow
             }
             await OpenArchive(Path.Combine(AppContext.BaseDirectory, "7z.dll"), false);
             Record("archive context cannot enable filesystem mutations", archiveSession != null && !FilesystemReady && !CopyToButton.IsEnabled && !MoveToButton.IsEnabled && !DeleteButton.IsEnabled && !RenameMenu.IsEnabled);
+            Record("archive rows keep native Fluent fallback and make no shell requests", activePanel.RefreshIcons == null);
             await VerifyPanels(output, fixture, renamedPath, target, Record);
         }
         catch (Exception error) { results.Add(new { name = "unexpected failure", passed = false, error = error.ToString() }); Environment.ExitCode = 1; }

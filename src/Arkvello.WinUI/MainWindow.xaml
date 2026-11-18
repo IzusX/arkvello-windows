@@ -104,7 +104,7 @@
         <MenuFlyoutItem Text="Обновить" Click="OnRefresh"/>
         <MenuFlyoutItem Text="Столбцы…" Click="OnColumns"/>
         <MenuFlyoutSubItem x:Name="ScaleMenu" Text="Масштаб основного окна"/>
-        <MenuFlyoutSubItem Text="Тема"><MenuFlyoutItem Text="Системная" Tag="Default" Click="OnTheme"/><MenuFlyoutItem Text="Светлая" Tag="Light" Click="OnTheme"/><MenuFlyoutItem Text="Тёмная" Tag="Dark" Click="OnTheme"/></MenuFlyoutSubItem>
+        <MenuFlyoutSubItem x:Name="ThemeMenu" Text="Тема"><ToggleMenuFlyoutItem Text="Системная" Tag="Default" Click="OnTheme"/><ToggleMenuFlyoutItem Text="Светлая" Tag="Light" Click="OnTheme"/><ToggleMenuFlyoutItem Text="Тёмная" Tag="Dark" Click="OnTheme"/></MenuFlyoutSubItem>
       </MenuBarItem>
       <MenuBarItem Title="Избранное" IsEnabled="False"/>
       <MenuBarItem Title="Сервис" IsEnabled="False"/>

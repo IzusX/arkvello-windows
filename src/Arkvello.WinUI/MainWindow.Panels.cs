@@ -26,6 +26,7 @@ public sealed partial class MainWindow
         public TextBlock Status { get; } = new();
         public Button BackButton { get; } = new();
         public ListViewBase List { get; set; } = null!;
+        public Action? RefreshIcons { get; set; }
         public List<FileEntry> Entries { get; set; } = [];
         public FileEntry? Current { get; set; }
         public string Directory { get; set; } = "";

@@ -5,6 +5,37 @@ next stage after receiving the stage 3 report. Its outstanding real-input,
 accessibility, DPI and clean-machine gates remain open. This record describes
 the first complete filesystem operation path, not completion of all stage 4.
 
+## Shell icons and window preferences
+
+All four filesystem views use Windows Shell icons. Arkvello requests icons and
+available overlays for ordinary local items on a background STA thread as rows
+are realized. The icon slot stays the same size when the bitmap arrives. The
+request queue and bitmap cache are bounded. A recycled row cannot accept a
+result for its previous item. Filesystem refresh invalidates Arkvello's cache.
+
+UNC, non-fixed drives, long paths, offline items and reparse points request
+association icons by attributes without opening the item. Their per-item
+overlays are unavailable on this route. This path requests icons only, never
+thumbnails. Archive rows and Shell failures use the Fluent fallback. See
+[SHGetFileInfoW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shgetfileinfow).
+
+On normal window close, changed preferences are saved to
+`%LOCALAPPDATA%\Arkvello\window.json`. The next launch restores the theme,
+one/two-panel mode, split ratio, and each panel's view, sort, mark mode, column
+order and widths. Saved preferences contain no paths, selections, open sessions
+or passwords. Existing scale and archive memory preferences keep their files.
+The preferences file is replaced in one rename. An unchanged window does not
+rewrite it. A missing or unreadable file falls back to the regular defaults.
+
+The published build passed 48 stage 4 client checks and 33 stage 3 regression
+checks. Nine new checks cover all four filesystem views, the overlay index for
+a real shortcut, the attributes-only policy, loading and recycling icons in a
+601-entry directory, and the archive fallback. The local Windows configuration
+supplies a transparent shortcut overlay. See the [Shell icon results](validation/stage4-shell-icons.json).
+Ten [preference checks](validation/stage4-window-preferences.json) used three
+separate client launches with isolated settings and covered save, restore, and
+startup after a truncated file. No user preferences were written by these checks.
+
 ## Two panels
 
 `Вид → Две панели` (F9) opens a second list. Click either list or path to
@@ -121,10 +152,10 @@ are not silently removed from the inventory. Copy replacement is not atomic;
 already performed work is not rolled back on cancellation. Plain-file recognition
 currently inherits the slice's full source hashing cost before shell handoff.
 
-Remaining stage 4 work includes desktop acceptance for both panes, full selection
-and shortcut parity, masks and incremental typing, shell file icons and overlays,
-filesystem column options, persistent preferences and path/destination histories.
-Split width and pane contents are retained within the current window session.
+Remaining stage 4 work includes desktop acceptance for both panes and Shell icon
+rendering, full selection and shortcut parity, masks and incremental typing,
+filesystem column options, window geometry and path/destination histories.
+Pane contents and navigation history are retained within the current window session.
 Stage 3 acceptance and Windows 10 and clean-machine checks also remain open.
 
 ## Reproduce
@@ -139,6 +170,7 @@ dotnet run --project tests/Arkvello.FileChecks -- "$PWD"
 dotnet run --project tests/Arkvello.BridgeChecks -- "$PWD"
 ./scripts/test-stage4-client.ps1
 ./scripts/test-stage3-client.ps1
+./scripts/test-window-preferences.ps1
 ```
 
 Run client diagnostics in a normal desktop session. Fixture operations stay in

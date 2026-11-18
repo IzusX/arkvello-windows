@@ -65,6 +65,9 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         InitializePanels();
+        windowPreferences = ReadWindowPreferences();
+        RestoreWindowPreferences(windowPreferences);
+        initialWindowPreferences = System.Text.Json.JsonSerializer.Serialize(CaptureWindowPreferences(windowPreferences.TwoPanels));
         foreach (int percent in InterfaceScale.Percentages)
         {
             var item = new ToggleMenuFlyoutItem { Text = percent + "%" + (percent == 100 ? " (по умолчанию)" : ""), Tag = percent, IsChecked = percent == scalePercent };
@@ -88,7 +91,13 @@ public sealed partial class MainWindow : Window
             if (busy) { e.Cancel = true; closing = true; CancelOperation(); }
             else if (configuring && !closing) { e.Cancel = true; closing = true; currentDialog?.Hide(); }
         };
-        Closed += (_, _) => { foreach (var pane in panels) CloseArchives(pane); };
+        Closed += (_, _) =>
+        {
+            closing = true;
+            SaveWindowPreferences();
+            shellIcons.Dispose();
+            foreach (var pane in panels) CloseArchives(pane);
+        };
         backgroundButton.Click += (_, _) =>
         {
             lock (workerSync)
@@ -116,13 +125,22 @@ public sealed partial class MainWindow : Window
     {
         ApplyInterfaceScale();
         string[] args = Environment.GetCommandLineArgs();
-        double scale = Root.XamlRoot.RasterizationScale;
+        var xamlRoot = Root.XamlRoot;
+        double scale = xamlRoot.RasterizationScale;
         var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
         int width = Math.Min((int)(1180 * scale), area.Width - 48);
         int height = Math.Min((int)(780 * scale), area.Height - 48);
         AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2, width, height));
+        xamlRoot.Changed += (_, _) =>
+        {
+            if (scale == xamlRoot.RasterizationScale) return;
+            scale = xamlRoot.RasterizationScale;
+            foreach (var pane in panels) pane.RefreshIcons?.Invoke();
+        };
         int open = Array.IndexOf(args, "--open");
         await Navigate(open >= 0 && args.Length > open + 1 ? args[open + 1] : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        if (windowPreferences.TwoPanels) await SetTwoPanels(true);
+        windowReady = !closing;
         if (NativeDependencies.Check(AppContext.BaseDirectory) is { } dependencyError) ShowError(dependencyError);
         // Explicit diagnostic mode never runs in ordinary application sessions.
         if (args.Contains("--measure-list")) await MeasureList();
@@ -130,6 +148,8 @@ public sealed partial class MainWindow : Window
         if (verify >= 0 && args.Length > verify + 1) await VerifyStage3(args[verify + 1]);
         int files = Array.IndexOf(args, "--verify-stage4");
         if (files >= 0 && args.Length > files + 1) await VerifyStage4(args[files + 1]);
+        int preferences = Array.IndexOf(args, "--verify-preferences");
+        if (preferences >= 0 && args.Length > preferences + 2) await VerifyWindowPreferences(args[preferences + 1], args[preferences + 2]);
     }
 
     private void RefreshColors()
@@ -151,12 +171,15 @@ public sealed partial class MainWindow : Window
     }
 
     private static string Escape(string value) => SecurityElement.Escape(value) ?? "";
-    private static string ItemIcon(int size)
+    private static string ItemIcon(int size, bool useShell)
     {
         string folder = size > 24 ? Controls.FluentItemPaths.FolderLarge : Controls.FluentItemPaths.Folder;
         string file = size > 24 ? Controls.FluentItemPaths.FileLarge : Controls.FluentItemPaths.File;
         int units = size > 24 ? 48 : 20;
-        return "<Grid><Viewbox Width='" + size + "' Height='" + size + "' Visibility='{Binding FolderVisibility}'><PathIcon Data='" + folder + "' Width='" + units + "' Height='" + units + "' Foreground='{ThemeResource FolderIconBrush}' AutomationProperties.AccessibilityView='Raw'/></Viewbox><Viewbox Width='" + size + "' Height='" + size + "' Visibility='{Binding FileVisibility}'><PathIcon Data='" + file + "' Width='" + units + "' Height='" + units + "' AutomationProperties.AccessibilityView='Raw'/></Viewbox></Grid>";
+        return "<Grid Width='" + size + "' Height='" + size + "'><Grid x:Name='FallbackIcon'>" +
+            "<Viewbox Visibility='{Binding FolderVisibility}'><PathIcon Data='" + folder + "' Width='" + units + "' Height='" + units + "' Foreground='{ThemeResource FolderIconBrush}' AutomationProperties.AccessibilityView='Raw'/></Viewbox>" +
+            "<Viewbox Visibility='{Binding FileVisibility}'><PathIcon Data='" + file + "' Width='" + units + "' Height='" + units + "' AutomationProperties.AccessibilityView='Raw'/></Viewbox></Grid>" +
+            (useShell ? "<Image x:Name='ShellIcon' Visibility='Collapsed' IsHitTestVisible='False' AutomationProperties.AccessibilityView='Raw'/>" : "") + "</Grid>";
     }
     private void BuildList(PanelState? targetPanel = null)
     {
@@ -329,6 +352,9 @@ public sealed partial class MainWindow : Window
         ConfigureContextMenu(pane, list);
         ConfigureFileInput(pane, list);
         string template;
+        bool useShell = pane.ArchiveSession == null;
+        int iconSize = view switch { "LargeIcons" => 36, "SmallIcons" => 20, _ => 18 };
+        string icon = ItemIcon(iconSize, useShell);
         if (details)
         {
             template = "<Grid Height='" + rowHeight.ToString(CultureInfo.InvariantCulture) + "' MinWidth='" + width.ToString(CultureInfo.InvariantCulture) + "' AutomationProperties.Name='{Binding AccessibleName}'><Grid.ColumnDefinitions>" + string.Join("", columns.Select(c => "<ColumnDefinition Width='" + c.Width.ToString(CultureInfo.InvariantCulture) + "'/>")) + "</Grid.ColumnDefinitions>";
@@ -339,12 +365,12 @@ public sealed partial class MainWindow : Window
                     ? "Converter={StaticResource ArchivePropertyConverter}, ConverterParameter=" + c.Property[11..^1] : Escape(c.Property);
                 string text = "<TextBlock Text='{Binding " + binding + "}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='16,0,12,0'" + (c.Property == "SizeText" ? " TextAlignment='Right'" : "") + "/>";
                 template += c.Property == "Name"
-                    ? "<Grid Grid.Column='" + i + "' Margin='16,0,0,0'><Grid.ColumnDefinitions><ColumnDefinition Width='26'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + ItemIcon(18) + "<TextBlock Tag='FileName' Grid.Column='1' Text='{Binding Name}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='0,0,12,0'/></Grid>"
+                    ? "<Grid Grid.Column='" + i + "' Margin='16,0,0,0'><Grid.ColumnDefinitions><ColumnDefinition Width='26'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + icon + "<TextBlock Tag='FileName' Grid.Column='1' Text='{Binding Name}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='0,0,12,0'/></Grid>"
                     : "<Grid Grid.Column='" + i + "'>" + text + "</Grid>";
             }
             template += "</Grid>";
         }
-        else if (view == "List") template = "<StackPanel Orientation='Horizontal' Height='" + rowHeight.ToString(CultureInfo.InvariantCulture) + "' Spacing='8' Margin='16,0'>" + ItemIcon(18) + "<TextBlock Tag='FileName' Text='{Binding Name}' VerticalAlignment='Center'/></StackPanel>";
+        else if (view == "List") template = "<StackPanel Orientation='Horizontal' Height='" + rowHeight.ToString(CultureInfo.InvariantCulture) + "' Spacing='8' Margin='16,0'>" + icon + "<TextBlock Tag='FileName' Text='{Binding Name}' VerticalAlignment='Center'/></StackPanel>";
         else
         {
             bool large = view == "LargeIcons";
@@ -363,10 +389,12 @@ public sealed partial class MainWindow : Window
             list.ItemContainerStyle = tileStyle;
             string label = "<TextBlock Tag='FileName' Text='{Binding Name}' TextTrimming='CharacterEllipsis' MaxLines='2' TextWrapping='Wrap' FontSize='14' LineHeight='" + line + "' LineStackingStrategy='BlockLineHeight' MaxHeight='" + textHeight + "' VerticalAlignment='Center'";
             template = large
-                ? "<Grid Width='140' Height='" + tileHeight.ToString(CultureInfo.InvariantCulture) + "' Padding='8' RowSpacing='8' ToolTipService.ToolTip='{Binding Name}' AutomationProperties.Name='{Binding AccessibleName}'><Grid.RowDefinitions><RowDefinition Height='40'/><RowDefinition Height='" + textHeight + "'/></Grid.RowDefinitions>" + ItemIcon(36) + "<Grid Grid.Row='1'>" + label + " TextAlignment='Center'/></Grid></Grid>"
-                : "<Grid Width='220' Height='" + tileHeight.ToString(CultureInfo.InvariantCulture) + "' Padding='8' ColumnSpacing='8' ToolTipService.ToolTip='{Binding Name}' AutomationProperties.Name='{Binding AccessibleName}'><Grid.ColumnDefinitions><ColumnDefinition Width='24'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + ItemIcon(20) + "<Grid Grid.Column='1'>" + label + "/></Grid></Grid>";
+                ? "<Grid Width='140' Height='" + tileHeight.ToString(CultureInfo.InvariantCulture) + "' Padding='8' RowSpacing='8' ToolTipService.ToolTip='{Binding Name}' AutomationProperties.Name='{Binding AccessibleName}'><Grid.RowDefinitions><RowDefinition Height='40'/><RowDefinition Height='" + textHeight + "'/></Grid.RowDefinitions>" + icon + "<Grid Grid.Row='1'>" + label + " TextAlignment='Center'/></Grid></Grid>"
+                : "<Grid Width='220' Height='" + tileHeight.ToString(CultureInfo.InvariantCulture) + "' Padding='8' ColumnSpacing='8' ToolTipService.ToolTip='{Binding Name}' AutomationProperties.Name='{Binding AccessibleName}'><Grid.ColumnDefinitions><ColumnDefinition Width='24'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + icon + "<Grid Grid.Column='1'>" + label + "/></Grid></Grid>";
         }
-        list.ItemTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'>" + template + "</DataTemplate>");
+        list.ItemTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>" + template + "</DataTemplate>");
+        pane.RefreshIcons = null;
+        if (useShell) ConfigureShellIcons(pane, list, iconSize);
         Grid.SetRow(list, 1); layout.Children.Add(list);
         pane.ListHost.Children.Add(layout);
         foreach (var item in entries.Where(e => selected.Contains(e.Identity))) list.SelectedItems.Add(item);
@@ -444,6 +472,7 @@ public sealed partial class MainWindow : Window
         {
             scalePercent = (int)((ToggleMenuFlyoutItem)sender).Tag;
             ApplyInterfaceScale();
+            foreach (var pane in panels) pane.RefreshIcons?.Invoke();
             if (!InterfaceScale.TrySave(scalePercent)) ShowError("Масштаб применён, но сохранить его не удалось. Проверьте доступ к папке настроек Arkvello.");
         }
         foreach (ToggleMenuFlyoutItem item in ScaleMenu.Items) item.IsChecked = (int)item.Tag == scalePercent;
@@ -485,12 +514,14 @@ public sealed partial class MainWindow : Window
             string fullPath = Path.GetFullPath(path);
             var loaded = await Task.Run(() => new DirectoryInfo(fullPath).EnumerateFileSystemInfos().Select(info =>
             {
-                bool dir = (info.Attributes & FileAttributes.Directory) != 0;
-                return new FileEntry(info.FullName, info.Name, info.FullName, dir, dir ? null : (ulong)((FileInfo)info).Length, info.LastWriteTime);
+                FileAttributes attributes = info.Attributes;
+                bool dir = (attributes & FileAttributes.Directory) != 0;
+                return new FileEntry(info.FullName, info.Name, info.FullName, dir, dir ? null : (ulong)((FileInfo)info).Length, info.LastWriteTime, Attributes: attributes);
             }).ToList());
             if (closing) return;
             if (remember && pane.Location.Path.Length > 0) pane.History.Push(pane.Location);
             CloseArchives(pane); pane.ArchivePrefix = "";
+            ClearShellIconCache();
             pane.Directory = fullPath; pane.Entries = loaded; ApplySort(pane); BuildList(pane);
             if (!refresh)
             {
@@ -955,7 +986,12 @@ public sealed partial class MainWindow : Window
         view = (string)((FrameworkElement)sender).Tag;
         BuildList(); FocusFileList();
     }
-    private void OnTheme(object sender, RoutedEventArgs e) { WindowHost.RequestedTheme = Enum.Parse<ElementTheme>((string)((FrameworkElement)sender).Tag); RefreshColors(); }
+    private void OnTheme(object sender, RoutedEventArgs e)
+    {
+        WindowHost.RequestedTheme = Enum.Parse<ElementTheme>((string)((FrameworkElement)sender).Tag);
+        UpdateThemeMenu();
+        RefreshColors();
+    }
     private void RequestClose()
     {
         // Window.Close() bypasses AppWindow.Closing. Menu/diagnostic close paths

@@ -1,0 +1,42 @@
+[
+  {
+    "name": "write settings start with the standard theme, view and panel count",
+    "passed": true
+  },
+  {
+    "name": "normal window close receives the requested pane and theme preferences",
+    "passed": true
+  },
+  {
+    "name": "closing a changed window writes preferences without a temporary file",
+    "passed": true
+  },
+  {
+    "name": "new process restores dark theme and the checked theme command",
+    "passed": true
+  },
+  {
+    "name": "new process restores visible panes, divider and split ratio",
+    "passed": true
+  },
+  {
+    "name": "new process restores independent view, sort, selection mode and columns",
+    "passed": true
+  },
+  {
+    "name": "no navigation or selection from the previous window is restored",
+    "passed": true
+  },
+  {
+    "name": "an unchanged window leaves saved preferences intact",
+    "passed": true
+  },
+  {
+    "name": "corrupt settings start with the standard theme, view and panel count",
+    "passed": true
+  },
+  {
+    "name": "a truncated file does not block startup or get overwritten by an unchanged window",
+    "passed": true
+  }
+]
