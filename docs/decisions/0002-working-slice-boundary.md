@@ -57,16 +57,29 @@ path. No lookup through the user's installed 7-Zip, registry or current working
 directory. The codec DLL and bridge derive from the pinned upstream source.
 Optional plugin loading is not implemented by this slice.
 
-The bridge still reuses FM-build objects, now selected by an explicit non-UI
-source whitelist in `scripts/native-object-list.ps1`. FM/GUI window objects are
-excluded, rather than merely relying on dead-code selection. Agent.cpp is
-compiled separately with `ARKVELLO_NATIVE` to prohibit its default global codec
-loader. All bridge/Agent compilation must match layout-affecting upstream
-defines, particularly `Z7_DEVICE_FILE`; a missing define caused heap corruption
-when first exercising UpdateOneFile, and was corrected and regression-tested.
-A dedicated source compilation target must still replace this temporary build
-coupling. Upstream headers require a clean rebuild because inherited nmake
-dependency tracking is incomplete.
+2026-11-18: the bridge has a dedicated source compilation target, replacing
+temporary reuse of FM-build objects. `src/Arkvello.Native/sources.txt` explicitly
+lists 59 upstream C/C++ sources; `scripts/build-native-sources.ps1` compiles them
+and bridge.cpp with one set of layout/runtime definitions, without a PCH or
+inherited library/object files. It rebuilds all 60 translation units on each
+invocation so header changes cannot silently retain stale bridge objects.
+The link response names only those objects, excluding stale files in its output
+directory. `ARKVELLO_NATIVE` prohibits Agent's default global codec loader.
+`Z7_DEVICE_FILE` remains essential: omitting it previously caused heap corruption
+when first exercising UpdateOneFile. All service sources now share that define.
+
+`build-native-bridge.cmd` builds only the pinned codec/CLI upstream targets
+(`build-windows.cmd core`), then the dedicated service target. The CLI constructs
+test fixtures; production service operations do not invoke it. Old FM/GUI targets
+remain available through the original default build, but neither provides service
+objects. Upstream nmake header dependency tracking still requires clean codec/CLI
+objects after relevant upstream header changes; this limitation no longer applies
+to the bridge's always-recompiled service sources.
+
+The service still includes upstream folder interface headers, and calls Windows
+filesystem/COM APIs. This boundary removes old window implementations and build
+coupling; it does not claim that the reused code has no upstream/UI-directory
+headers or that in-process codec faults are contained.
 
 2026-11-17: the localized upstream delta adds optional instance codec injection
 to CAgent, retaining the original FM default loader. The bridge injects its

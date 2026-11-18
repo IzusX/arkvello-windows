@@ -1,5 +1,9 @@
 @echo off
 setlocal
+if not "%~1"=="" if /i not "%~1"=="core" (
+  echo Usage: build-windows.cmd [core]
+  exit /b 1
+)
 for %%I in ("%~dp0..") do set "REPO=%%~fI"
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
@@ -21,10 +25,12 @@ call :build CPP\7zip\Bundles\Format7zF 7z.dll
 if errorlevel 1 exit /b 1
 call :build CPP\7zip\UI\Console 7z.exe
 if errorlevel 1 exit /b 1
+if /i "%~1"=="core" goto notices
 call :build CPP\7zip\UI\GUI 7zG.exe
 if errorlevel 1 exit /b 1
 call :build CPP\7zip\UI\FileManager 7zFM.exe
 if errorlevel 1 exit /b 1
+:notices
 copy /y "%REPO%\DOC\License.txt" "%OUT%\License.txt" >nul
 if errorlevel 1 exit /b 1
 copy /y "%REPO%\DOC\copying.txt" "%OUT%\copying.txt" >nul

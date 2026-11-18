@@ -13,6 +13,9 @@ overriding their optimization, runtime, assembler or warning settings.
 
 ## Build and check
 
+This section describes the retained Win32 baseline. For the current C# / WinUI
+client, .NET is also required; use the [WinUI build instructions](WINUI-SLICE.md).
+
 From the repository root, in a normal PowerShell terminal:
 
 ```powershell
@@ -20,6 +23,13 @@ From the repository root, in a normal PowerShell terminal:
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 .\scripts\test-windows.ps1
 ```
+
+`scripts\build-windows.cmd core` builds only 7z.dll and 7z.exe, without the old
+GUI/FM targets. `scripts\build-native-bridge.cmd` uses this mode, then compiles
+the explicit list in `src/Arkvello.Native/sources.txt` directly into the service
+DLL. It does not consume objects from an old FM build. Native service objects
+are fully recompiled on every invocation, including after header changes.
+Logs/link responses and a map are under `build/native-bridge/`.
 
 If local PowerShell policy blocks scripts, run the test in a separate process:
 

@@ -1,0 +1,70 @@
+name: Native archive services
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths:
+      - '.github/workflows/native-services.yml'
+      - 'scripts/build-native*'
+      - 'scripts/build-windows.cmd'
+      - 'src/Arkvello.Native/**'
+      - 'src/Arkvello.WinUI/Services/NativeArchive.cs'
+      - 'src/Arkvello.WinUI/Services/ArchiveSession.cs'
+      - 'tests/Arkvello.BridgeChecks/**'
+      - 'CPP/**'
+      - 'C/**'
+      - 'Asm/**'
+      - 'global.json'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-services-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-services:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Build archive services without upstream UI targets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path build -Force | Out-Null
+          & ./scripts/build-native-bridge.cmd *> build/native-source-build.log
+          $buildExit = $LASTEXITCODE
+          Get-Content build/native-source-build.log -Tail 80
+          if ($buildExit -ne 0) { exit $buildExit }
+          foreach ($path in 'CPP/7zip/UI/FileManager/x64', 'CPP/7zip/UI/GUI/x64') {
+            if (Test-Path -LiteralPath $path) { throw "Unexpected upstream UI build: $path" }
+          }
+      - name: Check production managed adapter and native services
+        shell: pwsh
+        run: |
+          dotnet run --project tests/Arkvello.BridgeChecks -- "$PWD" *> build/native-source-checks.log
+          $checkExit = $LASTEXITCODE
+          Get-Content build/native-source-checks.log
+          exit $checkExit
+      - name: Upload service build and check evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-services-evidence-x64
+          path: |
+            build/native-source-*.log
+            build/logs/
+            build/native-bridge/*.rsp
+            build/native-bridge/*.map
+            build/bridge-checks-*/checks.json
+          if-no-files-found: warn
+          retention-days: 14

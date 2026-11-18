@@ -29,8 +29,9 @@ $env:NUGET_PACKAGES = "$PWD\build\nuget"
 dotnet run --project tests\Arkvello.BridgeChecks -- "$PWD"
 ```
 
-The build keeps the original four binaries current, compiles the native bridge
-with MSVC `/W4 /WX /MT`, restores locked WinUI dependencies and builds Release.
+The build keeps the pinned codec/fixture CLI current, compiles the native bridge
+directly from an explicit service source list with MSVC `/W4 /WX /MT`, restores
+locked WinUI dependencies and builds Release. It does not build the old FM/GUI.
 No application files outside this repository are changed. Dependencies and
 build outputs remain ignored under `build/`, `bin/` and `obj/`.
 
@@ -154,8 +155,9 @@ milestone runs. Concrete remaining work:
 5. Test real large filesystem/encoded archive I/O and responsiveness during work;
    add batching/lazy providers only where measurements justify it. Synthetic
    realization and a TAR list do not prove every filesystem/codec workload.
-6. Dedicated native source target, explicit process/priority/session ownership
-   decision and clean-machine unpackaged/self-contained deployment. Bundle
+6. The dedicated native source target is implemented and checked below. Finish
+   the process/priority/session ownership decision and clean-machine
+   unpackaged/self-contained deployment. Bundle
    dependency notices, verify missing runtime/DLL behavior and independent shell
    entry later. No clean VM was available for this milestone.
 
@@ -291,7 +293,7 @@ The first update test exposed an incompatible `Z7_DEVICE_FILE` build define;
 matching native structure layouts fixed the heap corruption. The native library
 now explicitly excludes old FM/GUI objects, and CAgent receives session-owned
 codecs. See the revised [boundary decision](decisions/0002-working-slice-boundary.md).
-The full dedicated source build, arbitrary encrypted-format parameter fidelity,
+The dedicated source build is recorded below. Arbitrary encrypted-format parameter fidelity,
 external editing UI, root commit/recovery and stage-3 accessibility/deployment
 gates remain open. Successful staging does not establish complete edit-back.
 
@@ -336,3 +338,37 @@ until rebuilt after that older instance is closed.
 This is a bounded Details-view navigation pass, not certification of every view,
 original mark/current-item mode, screen reader, DPI/theme state or editor flow.
 The remaining stage-3 gates above still apply.
+
+### Dedicated native source build
+
+2026-11-18: removed the temporary FM-object whitelist script. The new target
+compiles 59 explicitly listed upstream sources plus bridge.cpp in its own obj/
+directory, with identical layout/runtime flags and no precompiled header.
+All units rebuild each time; the link response includes only manifest objects.
+The ordinary upstream build still supports all four original programs, while
+its new `core` mode builds only 7z.dll and the test-fixture CLI. Neither old GUI
+target is needed for WinUI or archive-service compilation.
+
+Executed checks:
+
+- Release native build completed with warnings treated as errors.
+- All 70 existing production-adapter/backend checks passed on the new DLL:
+  `build/native-source-checks.log`, fixture results under
+  `build/bridge-checks-e359062c85ed4891a1a1520443f8515b/checks.json`.
+- A fresh source-only copy at `build/native isolation source/` (including spaces
+  in its path) built the codec, CLI and service DLL without inherited outputs.
+  No FileManager/x64 or GUI/x64 directory was created. Evidence:
+  `build/native-isolation-build.log`.
+- The same 70 checks passed using that isolated DLL and codec, with their hashes
+  checked against the test host's copies. Evidence:
+  `build/native-isolation-checks.log`, isolated fixture result
+  `build/native isolation source/build/bridge-checks-94a9b8edddfb4527a5a187e07f055c6f/checks.json`.
+- The WinUI Release client built against the new service DLL with zero warnings
+  or errors. Output: `build/native-source-validation/Arkvello.exe`; log:
+  `build/native-source-winui-build.log`. This follow-up changed no UI behavior
+  and did not repeat the preceding real-window navigation acceptance pass.
+
+`Native archive services` CI now repeats the independent build and backend suite
+on a fresh Windows runner, failing if old FM/GUI build directories appear. This
+is build/integration coverage, not clean-machine end-user deployment or a native
+UI/accessibility acceptance pass. The other stage-3 gates remain open.
