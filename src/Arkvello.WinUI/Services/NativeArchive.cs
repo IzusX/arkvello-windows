@@ -70,7 +70,7 @@ public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
             if (e.Kind == ArchiveEventKind.Property) properties[e.Index] = new(e.Flags, e.Path1, e.Size1);
             if (e.Kind == ArchiveEventKind.Item)
                 items.Add(new(e.Index, e.Path1, (e.Flags & 1) != 0, (e.Flags & 2) != 0 ? e.Size1 : null, e.Size2,
-                    (e.Flags & 4) != 0 ? DateTime.FromFileTimeUtc(checked((long)e.Time1)).ToLocalTime() : null));
+                    (e.Flags & 4) != 0 ? DateTime.FromFileTimeUtc(checked((long)e.Time1)) : null));
             var response = handler(e);
             if (e.Kind == ArchiveEventKind.Password && response.Value >= 0)
             {

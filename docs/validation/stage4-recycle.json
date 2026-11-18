@@ -1,0 +1,14 @@
+[
+  {
+    "name": "native recycle operation removes the owned source path",
+    "passed": true
+  },
+  {
+    "name": "Windows Shell lists the exact owned file and its original directory in the Recycle Bin",
+    "passed": true
+  },
+  {
+    "name": "Windows restores the owned file to its original path with identical bytes",
+    "passed": true
+  }
+]

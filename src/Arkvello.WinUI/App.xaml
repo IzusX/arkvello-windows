@@ -2,6 +2,7 @@
   <Application.Resources>
     <ResourceDictionary>
       <controls:ArchivePropertyConverter x:Key="ArchivePropertyConverter"/>
+      <controls:FileTimeConverter x:Key="FileTimeConverter"/>
       <ResourceDictionary.MergedDictionaries>
         <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"/>
         <ResourceDictionary Source="Assets/Fluent/Icons.xaml"/>

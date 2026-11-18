@@ -7,6 +7,77 @@ namespace Arkvello;
 
 public sealed partial class MainWindow
 {
+    private static readonly Column[] OptionalFileColumns =
+        [new("Дата создания", "Created", 210), new("Дата доступа", "Accessed", 210), new("Атрибуты", "AttributesText", 180)];
+
+    private static bool ColumnInView(PanelState pane, Column column) => pane.ArchiveSession == null
+        ? !column.Property.StartsWith("Properties[", StringComparison.Ordinal)
+        : OptionalFileColumns.All(item => item.Property != column.Property);
+
+    private void OnSort(object sender, RoutedEventArgs e)
+    {
+        if (!SelectionReady) return;
+        string sort = (string)((MenuFlyoutItem)sender).Tag;
+        activePanel.Descending = sort != "None" && activePanel.Sort == sort && !activePanel.Descending;
+        activePanel.Sort = sort;
+        ApplySort();
+        BuildList();
+        FocusFileList();
+    }
+
+    private void OnTimeDisplay(object sender, RoutedEventArgs e)
+    {
+        if (SelectionReady && sender is ToggleMenuFlyoutItem { Tag: string option })
+        {
+            if (option == "UTC") activePanel.TimeUtc = !activePanel.TimeUtc;
+            else activePanel.TimePrecision = option;
+            BuildList();
+            FocusFileList();
+        }
+        UpdateTimeMenu();
+    }
+
+    private void UpdateTimeMenu()
+    {
+        foreach (var item in TimeMenu.Items.OfType<ToggleMenuFlyoutItem>())
+            item.IsChecked = (string)item.Tag == "UTC" ? activePanel.TimeUtc : (string)item.Tag == activePanel.TimePrecision;
+    }
+
+    private async Task ChooseFilesystemColumns()
+    {
+        var choices = new ListView { SelectionMode = ListViewSelectionMode.Multiple, IsMultiSelectCheckBoxEnabled = true, MaxHeight = 320 };
+        AutomationProperties.SetName(choices, "Дополнительные столбцы файлов");
+        foreach (var column in OptionalFileColumns)
+        {
+            var choice = new ListViewItem { Content = column.Label, Tag = column };
+            choices.Items.Add(choice);
+            if (columns.Any(saved => saved.Property == column.Property)) choices.SelectedItems.Add(choice);
+        }
+        configuring = true;
+        ContentDialogResult answer;
+        try { answer = await NewDialog("Столбцы файлов", choices, "Применить", "Отмена").ShowAsync(); }
+        finally { configuring = false; }
+        if (closing) return;
+        if (answer == ContentDialogResult.Primary)
+            ApplyFilesystemColumns(choices.SelectedItems.Cast<ListViewItem>().Select(item => (Column)item.Tag).ToArray());
+        FocusFileList();
+    }
+
+    private void ApplyFilesystemColumns(IReadOnlyList<Column> selected)
+    {
+        columns.RemoveAll(saved => OptionalFileColumns.Any(optional => optional.Property == saved.Property) &&
+            selected.All(item => item.Property != saved.Property));
+        foreach (var column in selected)
+            if (columns.All(saved => saved.Property != column.Property)) columns.Add(column);
+        if (columns.All(column => column.Property != activePanel.Sort) && activePanel.Sort != "None")
+        {
+            activePanel.Sort = "Name";
+            activePanel.Descending = false;
+        }
+        ApplySort();
+        BuildList();
+    }
+
     private Dictionary<(Guid Session, uint Property), IReadOnlyDictionary<uint, ArchiveProperty>> propertyCache => activePanel.Properties;
     private uint[] SelectedProperties => columns.Where(c => c.Property.StartsWith("Properties[", StringComparison.Ordinal)).Select(c => uint.Parse(c.Property[11..^1], System.Globalization.CultureInfo.InvariantCulture)).ToArray();
     private static ArchiveResult LoadSessionColumns(ArchiveSession session, uint[] selected, ArchiveJob job,
@@ -40,7 +111,12 @@ public sealed partial class MainWindow
     };
     private async void OnColumns(object sender, RoutedEventArgs e)
     {
-        if (busy || configuring || archiveSession == null) return;
+        if (!SelectionReady) return;
+        if (archiveSession == null)
+        {
+            await ChooseFilesystemColumns();
+            return;
+        }
         var session = archiveSession;
         IReadOnlyList<ArchiveColumn> available = [];
         await RunOperation("Свойства архива", _ => { available = session.Archive.ReadColumns(); return new(0, []); }, showSuccess: false);
@@ -72,8 +148,13 @@ public sealed partial class MainWindow
             return new(0, job.Issues);
         }, showSuccess: false);
         if (closing || result?.Succeeded != true) return;
-        columns.RemoveAll(c => c.Property.StartsWith("Properties[", StringComparison.Ordinal));
-        columns.AddRange(selected.Select(p => new Column(PropertyLabel(p), "Properties[" + p.Id + "]", 170)));
+        var selectedKeys = selected.Select(property => $"Properties[{property.Id}]").ToHashSet();
+        columns.RemoveAll(c => c.Property.StartsWith("Properties[", StringComparison.Ordinal) && !selectedKeys.Contains(c.Property));
+        foreach (var property in selected)
+        {
+            string key = $"Properties[{property.Id}]";
+            if (columns.All(c => c.Property != key)) columns.Add(new(PropertyLabel(property), key, 170));
+        }
         ShowArchiveFolder();
     }
     private IReadOnlyDictionary<string, ArchiveProperty> EntryProperties(uint index)

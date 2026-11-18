@@ -1,0 +1,74 @@
+[
+  {
+    "name": "write settings start with the standard theme, view and panel count",
+    "passed": true
+  },
+  {
+    "name": "write settings default to empty histories and enabled auto-refresh",
+    "passed": true
+  },
+  {
+    "name": "maximizing remembers the normal window bounds",
+    "passed": true
+  },
+  {
+    "name": "normal window close receives the requested pane and theme preferences",
+    "passed": true
+  },
+  {
+    "name": "closing a changed window writes preferences without a temporary file",
+    "passed": true
+  },
+  {
+    "name": "new process restores dark theme and the checked theme command",
+    "passed": true
+  },
+  {
+    "name": "new process restores visible panes, divider and split ratio",
+    "passed": true
+  },
+  {
+    "name": "new process restores independent view, sort, selection mode and columns",
+    "passed": true
+  },
+  {
+    "name": "new process restores optional filesystem column, timestamp settings and auto-refresh toggle",
+    "passed": true
+  },
+  {
+    "name": "new process restores distinct paths for navigation, transfer and extraction",
+    "passed": true
+  },
+  {
+    "name": "new process opens maximized and retains the stored normal position and size",
+    "passed": true
+  },
+  {
+    "name": "new window starts with fresh pane contents, back stack and selection",
+    "passed": true
+  },
+  {
+    "name": "an unchanged window leaves saved preferences intact",
+    "passed": true
+  },
+  {
+    "name": "previous settings format preserves panes and uses defaults for later settings",
+    "passed": true
+  },
+  {
+    "name": "an unchanged window retains the older settings file",
+    "passed": true
+  },
+  {
+    "name": "corrupt settings start with the standard theme, view and panel count",
+    "passed": true
+  },
+  {
+    "name": "corrupt settings default to empty histories and enabled auto-refresh",
+    "passed": true
+  },
+  {
+    "name": "a truncated file does not block startup or get overwritten by an unchanged window",
+    "passed": true
+  }
+]

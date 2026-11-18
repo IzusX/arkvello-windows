@@ -6,7 +6,17 @@ $output = Join-Path $repo ('build/window-preferences-' + [guid]::NewGuid().ToStr
 $fixture = Join-Path $output 'files'
 New-Item -ItemType Directory -Path $fixture -Force | Out-Null
 $settings = Join-Path $output 'window.json'
-$checks = foreach ($mode in 'write','read','corrupt') {
+$checks = foreach ($mode in 'write','read','legacy','corrupt') {
+    if ($mode -eq 'legacy') {
+        $legacy = Get-Content -LiteralPath $settings -Raw | ConvertFrom-Json -AsHashtable
+        foreach ($name in 'RecentPaths','TransferDestinations','ExtractDestinations','Bounds','AutoRefresh') { $legacy.Remove($name) }
+        foreach ($pane in $legacy.Left,$legacy.Right) {
+            $pane.Remove('TimePrecision')
+            $pane.Remove('TimeUtc')
+        }
+        $legacy | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $settings -Encoding utf8
+        $legacyHash = (Get-FileHash -LiteralPath $settings).Hash
+    }
     if ($mode -eq 'corrupt') { Set-Content -LiteralPath $settings -Value '{truncated' -NoNewline }
     $start = [Diagnostics.ProcessStartInfo]::new([IO.Path]::GetFullPath($Executable))
     $start.WorkingDirectory = $repo
@@ -26,6 +36,9 @@ $checks = foreach ($mode in 'write','read','corrupt') {
     }
     if ($mode -eq 'read') {
         [ordered]@{ name = 'an unchanged window leaves saved preferences intact'; passed = (Get-FileHash -LiteralPath $settings).Hash -eq $savedHash }
+    }
+    if ($mode -eq 'legacy') {
+        [ordered]@{ name = 'an unchanged window retains the older settings file'; passed = (Get-FileHash -LiteralPath $settings).Hash -eq $legacyHash }
     }
     if ($mode -eq 'corrupt') {
         [ordered]@{ name = 'a truncated file does not block startup or get overwritten by an unchanged window'; passed = (Get-Content -LiteralPath $settings -Raw) -eq '{truncated' }

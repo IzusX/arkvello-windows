@@ -1,9 +1,51 @@
-# Stage 4 — filesystem workflow increment
+# Stage 4 — main window and filesystem workflows
 
-2026-11-18. Status: authorized and in progress. The user approved moving to the
-next stage after receiving the stage 3 report. Its outstanding real-input,
-accessibility, DPI and clean-machine gates remain open. This record describes
-the first complete filesystem operation path, not completion of all stage 4.
+2026-11-18. The main-window implementation is ready for desktop acceptance.
+The published build runs on the development machine (Windows x64, build
+26300.9974). Windows 10, clean-machine and real desktop input acceptance remain
+open. This checkpoint does not advance the project to stage 5.
+
+## Navigation, selection and window state
+
+- The address field accepts absolute paths, paths relative to the current
+  filesystem directory or an open archive's containing directory, and folders
+  in the currently open archive. Escape
+  restores the displayed address. The Back stack remains independent per pane.
+  View provides a drive picker and a path history (`Alt+F12`).
+- The last 20 successful explicit locations and up to 20 destinations each for
+  Copy/Move and Extract are saved with window preferences. The location history
+  holds directory and root archive paths. It can be cleared from its dialog.
+  Destinations are offered in their respective operation dialogs. The next
+  launch starts fresh pane contents. Live archive sessions and passwords never
+  enter these histories.
+- Edit provides select/deselect by mask, select/deselect by current item type,
+  and inversion. Masks support `*` and `?` with case-insensitive matching.
+  The list supports keypad shortcuts and type-ahead navigation. Independent
+  mark mode keeps existing marks when typing moves the current item.
+- Details offers optional filesystem creation/access times and attributes.
+  Sort choices include provider order. Built-in timestamp columns support date,
+  minute, second, 100 ns precision and UTC. Column settings remain per pane.
+- Auto-refresh watches visible filesystem directories with a short debounce and
+  retains surviving marks and current item. It pauses while a dialog, rename
+  or transfer owns the interaction. An unavailable current folder disables
+  mutations until a successful retry. View can turn auto-refresh off.
+- The next launch restores the last normal window bounds and maximized state.
+  Restored bounds are constrained to the nearest display's working area.
+
+The final Release publish produced zero warnings and errors. All 553 portable
+payload hashes matched. The [81 WinUI checks](validation/stage4-main-window.json)
+include real directory changes, retry after temporary loss of a directory,
+four selection layouts, archive path editing, and cancelling a real overwrite
+prompt by requesting window close. The [18 preference checks](validation/stage4-preferences-final.json)
+used four separate launches, including a file from the previous settings schema
+and a truncated file. All 33 stage 3 regression checks passed again.
+
+The native Shell adapter sent one uniquely named fixture to the actual Windows
+Recycle Bin. A separate Shell probe found it by name and original directory,
+invoked Restore for that exact entry, and verified the restored bytes. All
+three [recycling checks](validation/stage4-recycle.json) passed. The fixture
+was created under `build/`. The built-in WinUI dialog still requires real-input
+verification.
 
 ## Shell icons and window preferences
 
@@ -22,8 +64,9 @@ thumbnails. Archive rows and Shell failures use the Fluent fallback. See
 On normal window close, changed preferences are saved to
 `%LOCALAPPDATA%\Arkvello\window.json`. The next launch restores the theme,
 one/two-panel mode, split ratio, and each panel's view, sort, mark mode, column
-order and widths. Saved preferences contain no paths, selections, open sessions
-or passwords. Existing scale and archive memory preferences keep their files.
+order and widths. The final settings schema also includes the histories,
+window bounds and view options described above. Existing scale and archive
+memory preferences keep their files.
 The preferences file is replaced in one rename. An unchanged window does not
 rewrite it. A missing or unreadable file falls back to the regular defaults.
 
@@ -142,21 +185,20 @@ The Windows Computer Use runtime still fails before JS executes:
 UI automation, injected window messages or forced termination was used. The
 above application-owned tests are not mouse/keyboard or screen-reader acceptance.
 
-Still required for this increment: actual keyboard gestures and key release,
-create/destination/overwrite/delete dialog input, real Explorer clipboard and
-drag in both directions, cut/partial/repeated paste behavior, actual Recycle Bin
-execution/restoration, close during copy/deletion, cross-volume/UNC, actual contrast
-and DPI/text-scale transitions. Copying reparse points/cloud placeholders and
-explicit ADS sources fails with a clear unsupported result; those capabilities
-are not silently removed from the inventory. Copy replacement is not atomic;
-already performed work is not rolled back on cancellation. Plain-file recognition
-currently inherits the slice's full source hashing cost before shell handoff.
+Desktop acceptance still needs actual keyboard and pointer input, toolbar and
+selection geometry, divider dragging, shell icon rendering, real Explorer
+clipboard and drag in both directions, cut/partial/repeated paste, closing during
+Shell deletion, cross-volume/UNC, contrast and DPI/text-scale transitions, and a
+screen reader. The desktop automation runtime returned OS error 3 after a fresh
+session reset. No second ready local volume was available for the transfer check.
 
-Remaining stage 4 work includes desktop acceptance for both panes and Shell icon
-rendering, full selection and shortcut parity, masks and incremental typing,
-filesystem column options, window geometry and path/destination histories.
-Pane contents and navigation history are retained within the current window session.
-Stage 3 acceptance and Windows 10 and clean-machine checks also remain open.
+Remaining parity items stay in the capability inventory, including the full
+upstream virtual roots, bookmarks, advanced filesystem properties, reparse and
+cloud placeholder copying, and explicit alternate-stream sources. The drive
+picker provides access to Windows drive letters and the address field accepts
+UNC share paths. Copy replacement leaves completed work in place on cancellation.
+Plain-file recognition currently inherits the slice's full source hashing cost
+before shell handoff.
 
 ## Reproduce
 

@@ -81,7 +81,7 @@
         <MenuFlyoutItem Text="Проверить" Click="OnTest"/>
         <MenuFlyoutSeparator/>
         <MenuFlyoutItem x:Name="NewFolderMenu" Text="Создать папку…" KeyboardAcceleratorTextOverride="F7" Click="OnNewFolder"/>
-        <MenuFlyoutItem x:Name="NewFileMenu" Text="Создать файл…" Click="OnNewFile"/>
+        <MenuFlyoutItem x:Name="NewFileMenu" Text="Создать файл…" KeyboardAcceleratorTextOverride="Ctrl+N" Click="OnNewFile"/>
         <MenuFlyoutItem x:Name="RenameMenu" Text="Переименовать" KeyboardAcceleratorTextOverride="F2" Click="OnRename"/>
         <MenuFlyoutItem x:Name="CopyToMenu" Text="Копировать в…" KeyboardAcceleratorTextOverride="F5" Click="OnCopyTo"/>
         <MenuFlyoutItem x:Name="MoveToMenu" Text="Переместить в…" KeyboardAcceleratorTextOverride="F6" Click="OnMoveTo"/>
@@ -92,7 +92,16 @@
         <MenuFlyoutItem x:Name="ClipboardCopyMenu" Text="Копировать" KeyboardAcceleratorTextOverride="Ctrl+C" Click="OnClipboardCopy"/>
         <MenuFlyoutItem x:Name="ClipboardCutMenu" Text="Вырезать" KeyboardAcceleratorTextOverride="Ctrl+X" Click="OnClipboardCut"/>
         <MenuFlyoutItem x:Name="PasteMenu" Text="Вставить" KeyboardAcceleratorTextOverride="Ctrl+V" Click="OnPaste"/>
-        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Выделить всё" Click="OnSelectAll"/><MenuFlyoutItem Text="Снять выделение" Click="OnClearSelection"/><ToggleMenuFlyoutItem x:Name="MarkModeMenu" Text="Независимые отметки" Click="OnMarkMode"/><MenuFlyoutSeparator/><MenuFlyoutItem Text="Редактировать в Блокноте…" Click="OnEdit"/>
+        <MenuFlyoutSeparator/>
+        <MenuFlyoutItem Text="Выделить всё" KeyboardAcceleratorTextOverride="Ctrl+A" Click="OnSelectAll"/>
+        <MenuFlyoutItem Text="Снять выделение" KeyboardAcceleratorTextOverride="Shift+Num −" Click="OnClearSelection"/>
+        <MenuFlyoutItem Text="Инвертировать выделение" KeyboardAcceleratorTextOverride="Num *" Click="OnInvertSelection"/>
+        <MenuFlyoutItem Text="Выделить по маске…" KeyboardAcceleratorTextOverride="Num +" Click="OnSelectionMask"/>
+        <MenuFlyoutItem Text="Снять выделение по маске…" KeyboardAcceleratorTextOverride="Num −" Tag="Deselect" Click="OnSelectionMask"/>
+        <MenuFlyoutItem Text="Выделить по типу" KeyboardAcceleratorTextOverride="Alt+Num +" Click="OnSelectionType"/>
+        <MenuFlyoutItem Text="Снять выделение по типу" KeyboardAcceleratorTextOverride="Alt+Num −" Tag="Deselect" Click="OnSelectionType"/>
+        <ToggleMenuFlyoutItem x:Name="MarkModeMenu" Text="Независимые отметки" Click="OnMarkMode"/>
+        <MenuFlyoutSeparator/><MenuFlyoutItem Text="Редактировать в Блокноте…" Click="OnEdit"/>
       </MenuBarItem>
       <MenuBarItem Title="Вид">
         <MenuFlyoutItem Text="Таблица" Tag="Details" Click="OnView"/>
@@ -102,7 +111,25 @@
         <MenuFlyoutSeparator/>
         <ToggleMenuFlyoutItem x:Name="TwoPanelsMenu" Text="Две панели" KeyboardAcceleratorTextOverride="F9" Click="OnTwoPanels"/>
         <MenuFlyoutItem Text="Обновить" Click="OnRefresh"/>
+        <ToggleMenuFlyoutItem x:Name="AutoRefreshMenu" Text="Обновлять автоматически" Click="OnAutoRefresh"/>
+        <MenuFlyoutItem Text="История путей…" KeyboardAcceleratorTextOverride="Alt+F12" Click="OnPathHistory"/>
+        <MenuFlyoutItem Text="К дискам…" Click="OnDrives"/>
+        <MenuFlyoutSubItem Text="Сортировка">
+          <MenuFlyoutItem Text="По имени" Tag="Name" Click="OnSort"/>
+          <MenuFlyoutItem Text="По типу" Tag="TypeText" Click="OnSort"/>
+          <MenuFlyoutItem Text="По дате изменения" Tag="ModifiedText" Click="OnSort"/>
+          <MenuFlyoutItem Text="По размеру" Tag="SizeText" Click="OnSort"/>
+          <MenuFlyoutItem Text="Без сортировки" Tag="None" Click="OnSort"/>
+        </MenuFlyoutSubItem>
         <MenuFlyoutItem Text="Столбцы…" Click="OnColumns"/>
+        <MenuFlyoutSubItem x:Name="TimeMenu" Text="Дата и время">
+          <ToggleMenuFlyoutItem Text="До дня" Tag="D" Click="OnTimeDisplay"/>
+          <ToggleMenuFlyoutItem Text="До минуты" Tag="M" Click="OnTimeDisplay"/>
+          <ToggleMenuFlyoutItem Text="До секунды" Tag="S" Click="OnTimeDisplay"/>
+          <ToggleMenuFlyoutItem Text="До 100 нс" Tag="F" Click="OnTimeDisplay"/>
+          <MenuFlyoutSeparator/>
+          <ToggleMenuFlyoutItem Text="Часовой пояс UTC" Tag="UTC" Click="OnTimeDisplay"/>
+        </MenuFlyoutSubItem>
         <MenuFlyoutSubItem x:Name="ScaleMenu" Text="Масштаб основного окна"/>
         <MenuFlyoutSubItem x:Name="ThemeMenu" Text="Тема"><ToggleMenuFlyoutItem Text="Системная" Tag="Default" Click="OnTheme"/><ToggleMenuFlyoutItem Text="Светлая" Tag="Light" Click="OnTheme"/><ToggleMenuFlyoutItem Text="Тёмная" Tag="Dark" Click="OnTheme"/></MenuFlyoutSubItem>
       </MenuBarItem>

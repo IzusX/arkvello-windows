@@ -1,0 +1,326 @@
+[
+  {
+    "name": "filesystem commands enabled in directory",
+    "passed": true
+  },
+  {
+    "name": "inline editor contains the real name and selects its stem",
+    "passed": true
+  },
+  {
+    "name": "invalid inline rename keeps editor input and original",
+    "passed": true
+  },
+  {
+    "name": "inline collision keeps both originals and editor",
+    "passed": true
+  },
+  {
+    "name": "inline commit refreshes selection and file bytes",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in Details",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in Details",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in List",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in List",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "inline editor has a finite visible slot in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "inline cancel preserves file in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "filesystem operation selection uses marks before caret",
+    "passed": true
+  },
+  {
+    "name": "filesystem refresh retains marks and independent caret",
+    "passed": true
+  },
+  {
+    "name": "StorageItems paste uses real upstream copy without system clipboard",
+    "passed": true
+  },
+  {
+    "name": "outbound delayed drag provider supplies the exact storage item",
+    "passed": true
+  },
+  {
+    "name": "StorageItems move paste retains bytes and removes only source",
+    "passed": true
+  },
+  {
+    "name": "text paste cannot invoke a file operation",
+    "passed": true
+  },
+  {
+    "name": "plain file reaches explicit non-archive result without launching an app",
+    "passed": true
+  },
+  {
+    "name": "shell icons for ordinary files and folders in Details",
+    "passed": true
+  },
+  {
+    "name": "shell icons for ordinary files and folders in List",
+    "passed": true
+  },
+  {
+    "name": "shell icons for ordinary files and folders in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "shell icons for ordinary files and folders in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "Shell returns a shortcut overlay for a local folder target",
+    "passed": true
+  },
+  {
+    "name": "offline files, reparse points, long paths and UNC use attributes only",
+    "passed": true
+  },
+  {
+    "name": "icon cache fills from realized rows rather than the whole directory",
+    "passed": true
+  },
+  {
+    "name": "scrolling to a distant row replaces recycled file icons",
+    "passed": true
+  },
+  {
+    "name": "filesystem controls render in Light",
+    "passed": true
+  },
+  {
+    "name": "filesystem controls render in Dark",
+    "passed": true
+  },
+  {
+    "name": "archive context cannot enable filesystem mutations",
+    "passed": true
+  },
+  {
+    "name": "archive rows keep native Fluent fallback and make no shell requests",
+    "passed": true
+  },
+  {
+    "name": "left pane opens an actual nested archive with its own temporary file",
+    "passed": true
+  },
+  {
+    "name": "two independently laid out lists with first-use filesystem path",
+    "passed": true
+  },
+  {
+    "name": "right navigation and back leave the left archive open",
+    "passed": true
+  },
+  {
+    "name": "opening the same archive twice creates separate sessions",
+    "passed": true
+  },
+  {
+    "name": "single view keeps the active right pane and suspends left in place",
+    "passed": true
+  },
+  {
+    "name": "reopening split retains both sessions and restores visual order",
+    "passed": true
+  },
+  {
+    "name": "leaving one archive releases only its own session",
+    "passed": true
+  },
+  {
+    "name": "views and column widths are owned by each pane",
+    "passed": true
+  },
+  {
+    "name": "navigating away closes the owned nested chain and its temporary file",
+    "passed": true
+  },
+  {
+    "name": "filesystem transfer defaults to the other pane\u0027s directory",
+    "passed": true
+  },
+  {
+    "name": "copy updates both lists and keeps source selection",
+    "passed": true
+  },
+  {
+    "name": "passive navigation preserves active right selection and commands",
+    "passed": true
+  },
+  {
+    "name": "move removes source from right and appears in left",
+    "passed": true
+  },
+  {
+    "name": "narrow window keeps both path fields and both list viewports usable",
+    "passed": true
+  },
+  {
+    "name": "split widths align across path, list and status in Light",
+    "passed": true
+  },
+  {
+    "name": "split widths align across path, list and status in Dark",
+    "passed": true
+  },
+  {
+    "name": "typed relative path resolves against the current filesystem pane",
+    "passed": true
+  },
+  {
+    "name": "revisiting the same directory deduplicates recents and back history",
+    "passed": true
+  },
+  {
+    "name": "invalid path preserves location and stays out of recents",
+    "passed": true
+  },
+  {
+    "name": "back restores the previous directory without adding navigation entries",
+    "passed": true
+  },
+  {
+    "name": "mask adds case-insensitive matches and preserves unrelated marks in Details",
+    "passed": true
+  },
+  {
+    "name": "mask deselects matches without changing the other mark in Details",
+    "passed": true
+  },
+  {
+    "name": "invert includes files and folders in Details",
+    "passed": true
+  },
+  {
+    "name": "mask adds case-insensitive matches and preserves unrelated marks in List",
+    "passed": true
+  },
+  {
+    "name": "mask deselects matches without changing the other mark in List",
+    "passed": true
+  },
+  {
+    "name": "invert includes files and folders in List",
+    "passed": true
+  },
+  {
+    "name": "mask adds case-insensitive matches and preserves unrelated marks in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "mask deselects matches without changing the other mark in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "invert includes files and folders in SmallIcons",
+    "passed": true
+  },
+  {
+    "name": "mask adds case-insensitive matches and preserves unrelated marks in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "mask deselects matches without changing the other mark in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "invert includes files and folders in LargeIcons",
+    "passed": true
+  },
+  {
+    "name": "extension selection includes both filename casings and excludes folders",
+    "passed": true
+  },
+  {
+    "name": "changing selection mode retains existing marks",
+    "passed": true
+  },
+  {
+    "name": "Cyrillic incremental navigation moves the caret without changing independent marks",
+    "passed": true
+  },
+  {
+    "name": "incremental prefix retains the matching filename in standard selection",
+    "passed": true
+  },
+  {
+    "name": "filesystem metadata columns render an actual UTC timestamp and sort by creation time",
+    "passed": true
+  },
+  {
+    "name": "filesystem-only column contributes a header in Details",
+    "passed": true
+  },
+  {
+    "name": "unsorted view restores the provider enumeration order",
+    "passed": true
+  },
+  {
+    "name": "real filesystem notification updates the folder and preserves marks",
+    "passed": true
+  },
+  {
+    "name": "turning auto-refresh off releases the directory watcher",
+    "passed": true
+  },
+  {
+    "name": "refresh detects loss of the current directory and disables mutations",
+    "passed": true
+  },
+  {
+    "name": "manual retry restores the same directory after it returns",
+    "passed": true
+  },
+  {
+    "name": "recent locations store the real archive path and hide filesystem columns",
+    "passed": true
+  },
+  {
+    "name": "typed archive subfolder uses the existing live session and exact directory",
+    "passed": true
+  },
+  {
+    "name": "archive mask selects the real session member",
+    "passed": true
+  },
+  {
+    "name": "typed archive path can open an explicit empty directory",
+    "passed": true
+  },
+  {
+    "name": "invalid archive subfolder leaves the valid session and directory in place",
+    "passed": true
+  },
+  {
+    "name": "closing during a filesystem overwrite prompt cancels the worker and preserves both files",
+    "passed": true
+  }
+]

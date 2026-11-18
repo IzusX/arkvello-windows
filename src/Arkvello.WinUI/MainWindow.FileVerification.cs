@@ -107,13 +107,45 @@ public sealed partial class MainWindow
             Record("archive context cannot enable filesystem mutations", archiveSession != null && !FilesystemReady && !CopyToButton.IsEnabled && !MoveToButton.IsEnabled && !DeleteButton.IsEnabled && !RenameMenu.IsEnabled);
             Record("archive rows keep native Fluent fallback and make no shell requests", activePanel.RefreshIcons == null);
             await VerifyPanels(output, fixture, renamedPath, target, Record);
+            await VerifyFileNavigationAndSelection(fixture, Record);
+            await VerifyCloseDuringTransfer(fixture, Record);
         }
         catch (Exception error) { results.Add(new { name = "unexpected failure", passed = false, error = error.ToString() }); Environment.ExitCode = 1; }
         finally
         {
             File.WriteAllText(Path.Combine(output, "client-checks.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
-            RequestClose();
+            if (!closing) RequestClose();
         }
+    }
+
+    private async Task VerifyCloseDuringTransfer(string fixture, Action<string, bool> record)
+    {
+        await Navigate(fixture, remember: false);
+        string source = Path.Combine(fixture, "close-during-copy.txt");
+        string target = Directory.CreateDirectory(Path.Combine(fixture, "close-during-copy")).FullName;
+        string existing = Path.Combine(target, Path.GetFileName(source));
+        File.WriteAllText(source, "source");
+        File.WriteAllText(existing, "destination");
+        bool prompted = false;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+        timer.Tick += (_, _) =>
+        {
+            if (promptDialog == null) return;
+            timer.Stop();
+            prompted = true;
+            RequestClose();
+        };
+        Closed += (_, _) => record("closing during a filesystem overwrite prompt cancels the worker and preserves both files",
+            prompted && operationCancelled && activeJob == null && !busy &&
+            File.ReadAllText(source) == "source" && File.ReadAllText(existing) == "destination");
+        timer.Start();
+        try
+        {
+            await RunOperation("Проверка закрытия при копировании", job => FileSystemOperations.Transfer([source], target, false, job),
+                showResult: false);
+            if (!prompted) record("close test opens the real filesystem overwrite prompt", false);
+        }
+        finally { timer.Stop(); }
     }
 
     private async Task VerifyPanels(string output, string fixture, string source, string destination, Action<string, bool> record)

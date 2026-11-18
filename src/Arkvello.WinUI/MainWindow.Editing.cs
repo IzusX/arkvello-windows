@@ -47,10 +47,13 @@ public sealed partial class MainWindow
             open.IsEnabled = ready && item != null;
             edit.IsEnabled = ready && archiveSession != null && item is { IsDirectory: false, ArchiveIndex: not null };
             extract.IsEnabled = ready && archiveSession != null;
-            refresh.IsEnabled = ready; properties.IsEnabled = ready && archiveSession != null;
+            refresh.IsEnabled = ready; properties.IsEnabled = ready;
             copy.IsEnabled = cut.IsEnabled = delete.IsEnabled = FilesystemReady && OperatedFiles().Length > 0;
             rename.IsEnabled = FilesystemReady && item != null; paste.IsEnabled = folder.IsEnabled = FilesystemReady;
         };
+        AutomationProperties.SetHelpText(list, pane.MarkMode
+            ? "Стрелки перемещают фокус. Пробел или Insert меняет отметку."
+            : "Ctrl и Shift расширяют выделение. Insert меняет отметку и переходит к следующему элементу.");
         list.ContextFlyout = menu;
         list.GotFocus += (_, _) =>
         {
@@ -58,11 +61,11 @@ public sealed partial class MainWindow
         };
         list.RightTapped += (_, e) =>
         {
-            if (!ActivatePanel(pane)) return;
+            if (!SelectionReady || !ActivatePanel(pane)) return;
             for (var source = e.OriginalSource as DependencyObject; source != null && !ReferenceEquals(source, list); source = VisualTreeHelper.GetParent(source))
                 if (source is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container && list.ItemFromContainer(container) is FileEntry item)
                 {
-                    if (!list.SelectedItems.Contains(item)) { list.SelectedItems.Clear(); list.SelectedItems.Add(item); }
+                    if (!pane.MarkMode && !list.SelectedItems.Contains(item)) { list.SelectedItems.Clear(); list.SelectedItems.Add(item); }
                     container.Focus(FocusState.Pointer); break;
                 }
         };
@@ -85,10 +88,13 @@ public sealed partial class MainWindow
     }
     private void OnMarkMode(object sender, RoutedEventArgs e)
     {
-        if (busy || configuring) return;
-        markMode = ((ToggleMenuFlyoutItem)sender).IsChecked;
-        list.SelectionMode = markMode ? ListViewSelectionMode.Multiple : ListViewSelectionMode.Extended;
-        AutomationProperties.SetHelpText(list, markMode ? "Режим отметок. Стрелки перемещают фокус; пробел или Insert изменяет отметку." : "Выбор с Ctrl и Shift; Insert изменяет отметку и переходит к следующему элементу.");
+        if (SelectionReady)
+        {
+            markMode = !markMode;
+            BuildList();
+            FocusFileList();
+        }
+        MarkModeMenu.IsChecked = markMode;
     }
     private async Task EditCurrent()
     {

@@ -67,7 +67,6 @@ public sealed partial class MainWindow : Window
         InitializePanels();
         windowPreferences = ReadWindowPreferences();
         RestoreWindowPreferences(windowPreferences);
-        initialWindowPreferences = System.Text.Json.JsonSerializer.Serialize(CaptureWindowPreferences(windowPreferences.TwoPanels));
         foreach (int percent in InterfaceScale.Percentages)
         {
             var item = new ToggleMenuFlyoutItem { Text = percent + "%" + (percent == 100 ? " (по умолчанию)" : ""), Tag = percent, IsChecked = percent == scalePercent };
@@ -95,6 +94,8 @@ public sealed partial class MainWindow : Window
         {
             closing = true;
             SaveWindowPreferences();
+            folderRefreshTimer.Stop();
+            foreach (var pane in panels) pane.Watch?.Dispose();
             shellIcons.Dispose();
             foreach (var pane in panels) CloseArchives(pane);
         };
@@ -117,6 +118,7 @@ public sealed partial class MainWindow : Window
         };
         cancelButton.Click += (_, _) => CancelOperation();
         progressTimer.Tick += (_, _) => FlushProgress();
+        folderRefreshTimer.Tick += OnFolderRefreshTick;
         foreach (var pane in panels) BuildList(pane);
         RefreshColors();
     }
@@ -125,12 +127,11 @@ public sealed partial class MainWindow : Window
     {
         ApplyInterfaceScale();
         string[] args = Environment.GetCommandLineArgs();
+        allowFolderWatches = !args.Any(arg => arg is "--verify-stage3" or "--verify-stage4" or "--measure-list" or "--verify-preferences");
         var xamlRoot = Root.XamlRoot;
         double scale = xamlRoot.RasterizationScale;
-        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
-        int width = Math.Min((int)(1180 * scale), area.Width - 48);
-        int height = Math.Min((int)(780 * scale), area.Height - 48);
-        AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(area.X + (area.Width - width) / 2, area.Y + (area.Height - height) / 2, width, height));
+        RestoreWindowBounds(scale);
+        initialWindowPreferences = System.Text.Json.JsonSerializer.Serialize(CaptureWindowPreferences(windowPreferences.TwoPanels));
         xamlRoot.Changed += (_, _) =>
         {
             if (scale == xamlRoot.RasterizationScale) return;
@@ -138,7 +139,7 @@ public sealed partial class MainWindow : Window
             foreach (var pane in panels) pane.RefreshIcons?.Invoke();
         };
         int open = Array.IndexOf(args, "--open");
-        await Navigate(open >= 0 && args.Length > open + 1 ? args[open + 1] : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        await Navigate(open >= 0 && args.Length > open + 1 ? args[open + 1] : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), remember: false);
         if (windowPreferences.TwoPanels) await SetTwoPanels(true);
         windowReady = !closing;
         if (NativeDependencies.Check(AppContext.BaseDirectory) is { } dependencyError) ShowError(dependencyError);
@@ -181,15 +182,17 @@ public sealed partial class MainWindow : Window
             "<Viewbox Visibility='{Binding FileVisibility}'><PathIcon Data='" + file + "' Width='" + units + "' Height='" + units + "' AutomationProperties.AccessibilityView='Raw'/></Viewbox></Grid>" +
             (useShell ? "<Image x:Name='ShellIcon' Visibility='Collapsed' IsHitTestVisible='False' AutomationProperties.AccessibilityView='Raw'/>" : "") + "</Grid>";
     }
-    private void BuildList(PanelState? targetPanel = null)
+    private void BuildList(PanelState? targetPanel = null, bool preserveViewport = false)
     {
         var pane = targetPanel ?? activePanel;
+        var oldScroll = preserveViewport && pane.List != null ? VisualChild<ScrollViewer>(pane.List) : null;
+        double? oldLeft = oldScroll?.HorizontalOffset, oldTop = oldScroll?.VerticalOffset;
         bool restoreFocus = pane == activePanel && pane.List != null && FocusInActiveList();
         string? focused = restoreFocus ? CurrentItem()?.Identity : pane.Current?.Identity;
         if (pane == activePanel) CancelRename();
         var selected = pane.List?.SelectedItems.Cast<FileEntry>().Select(e => e.Identity).ToHashSet() ?? [];
         pane.ListHost.Children.Clear();
-        var columns = pane.Columns;
+        var columns = pane.Columns.Where(column => ColumnInView(pane, column)).ToList();
         string view = pane.View;
         var entries = pane.Entries;
         var layout = new Grid();
@@ -204,6 +207,13 @@ public sealed partial class MainWindow : Window
             for (int i = 0; i < columns.Count; i++)
             {
                 int position = i; var col = columns[i];
+                int backing = pane.Columns.IndexOf(col);
+                void ResizeColumn(double width) => pane.Columns[backing] = col with { Width = width };
+                void SwapColumn(int index)
+                {
+                    int other = pane.Columns.IndexOf(columns[index]);
+                    (pane.Columns[backing], pane.Columns[other]) = (pane.Columns[other], pane.Columns[backing]);
+                }
                 var cell = new Grid { Width = col.Width, AllowDrop = true, CanDrag = true, Tag = col.Property };
                 var button = new Button { Content = col.Label + (pane.Sort == col.Property ? pane.Descending ? " ↓" : " ↑" : ""), Padding = new(16, 0, 8, 0), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new(0), CornerRadius = new(0) };
                 button.Click += (_, _) =>
@@ -218,17 +228,20 @@ public sealed partial class MainWindow : Window
                 resize.Click += async (_, _) =>
                 {
                     if (!ActivatePanel(pane)) return;
-                    var value = new NumberBox { Value = columns[position].Width, Minimum = 90, Maximum = 4096, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
+                    var value = new NumberBox { Value = pane.Columns[backing].Width, Minimum = 90, Maximum = 4096, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact };
                     AutomationProperties.SetName(value, "Ширина в единицах интерфейса");
                     configuring = true;
-                    try { if (await NewDialog("Ширина: " + col.Label, value, "Применить", "Отмена").ShowAsync() == ContentDialogResult.Primary && !double.IsNaN(value.Value)) { columns[position] = columns[position] with { Width = value.Value }; BuildList(pane); } }
+                    try { if (await NewDialog("Ширина: " + col.Label, value, "Применить", "Отмена").ShowAsync() == ContentDialogResult.Primary && double.IsFinite(value.Value)) { ResizeColumn(Math.Clamp(value.Value, 90, 4096)); BuildList(pane); } }
                     finally { configuring = false; }
                 };
                 var left = new MenuFlyoutItem { Text = "Переместить левее", IsEnabled = position > 0 };
-                left.Click += (_, _) => { if (ActivatePanel(pane)) { (columns[position - 1], columns[position]) = (columns[position], columns[position - 1]); BuildList(pane); } };
+                left.Click += (_, _) => { if (ActivatePanel(pane)) { SwapColumn(position - 1); BuildList(pane); } };
                 var right = new MenuFlyoutItem { Text = "Переместить правее", IsEnabled = position < columns.Count - 1 };
-                right.Click += (_, _) => { if (ActivatePanel(pane)) { (columns[position + 1], columns[position]) = (columns[position], columns[position + 1]); BuildList(pane); } };
+                right.Click += (_, _) => { if (ActivatePanel(pane)) { SwapColumn(position + 1); BuildList(pane); } };
                 columnMenu.Items.Add(resize); columnMenu.Items.Add(left); columnMenu.Items.Add(right); button.ContextFlyout = columnMenu;
+                var configure = new MenuFlyoutItem { Text = "Столбцы…" };
+                configure.Click += (sender, e) => { if (ActivatePanel(pane)) OnColumns(sender, e); };
+                columnMenu.Items.Add(configure);
                 button.Tag = col.Property;
                 AutomationProperties.SetAutomationId(button, "Column-" + col.Property);
                 button.PreviewKeyDown += (_, e) =>
@@ -239,8 +252,8 @@ public sealed partial class MainWindow : Window
                     bool shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
                     int delta = e.Key == VirtualKey.Left ? -1 : 1;
                     if (shift && position + delta >= 0 && position + delta < columns.Count)
-                        (columns[position], columns[position + delta]) = (columns[position + delta], columns[position]);
-                    else if (!shift) columns[position] = col with { Width = Math.Clamp(col.Width + delta * 16, 90, 4096) };
+                        SwapColumn(position + delta);
+                    else if (!shift) ResizeColumn(Math.Clamp(col.Width + delta * 16, 90, 4096));
                     BuildList(pane); FocusHeader(col.Property);
                 };
                 AutomationProperties.SetHelpText(button, "Enter — сортировка. Ctrl и стрелки — ширина; Ctrl+Shift и стрелки — порядок. Контекстное меню — точная ширина.");
@@ -249,8 +262,8 @@ public sealed partial class MainWindow : Window
                 thumb.DragDelta += (_, e) =>
                 {
                     if (!ActivatePanel(pane)) return;
-                    double w = Math.Clamp(columns[position].Width + e.HorizontalChange, 90, 4096);
-                    columns[position] = columns[position] with { Width = w };
+                    double w = Math.Clamp(pane.Columns[backing].Width + e.HorizontalChange, 90, 4096);
+                    ResizeColumn(w);
                     cell.Width = w;
                 };
                 thumb.DragCompleted += (_, _) => { if (ActivatePanel(pane)) BuildList(pane); };
@@ -259,9 +272,10 @@ public sealed partial class MainWindow : Window
                 cell.Drop += async (_, e) =>
                 {
                     if (!ActivatePanel(pane) || !e.DataView.Contains(StandardDataFormats.Text)) return;
-                    string key = await e.DataView.GetTextAsync(); int old = columns.FindIndex(c => c.Property == key);
-                    if (!ActivatePanel(pane) || old < 0 || old == position || position >= columns.Count) return;
-                    var moving = columns[old]; columns.RemoveAt(old); columns.Insert(position, moving); BuildList(pane);
+                    string key = await e.DataView.GetTextAsync();
+                    int old = pane.Columns.FindIndex(c => c.Property == key && ColumnInView(pane, c));
+                    if (!ActivatePanel(pane) || old < 0 || old == backing || backing >= pane.Columns.Count) return;
+                    var moving = pane.Columns[old]; pane.Columns.RemoveAt(old); pane.Columns.Insert(backing, moving); BuildList(pane);
                 };
                 cell.Children.Add(button); cell.Children.Add(thumb); header.Children.Add(cell);
             }
@@ -350,6 +364,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetName(list, pane.Label + ": файлы");
         AutomationProperties.SetAutomationId(list, pane.Index == 0 ? "FileList" : "RightFileList");
         ConfigureContextMenu(pane, list);
+        ConfigureSelectionInput(pane, list);
         ConfigureFileInput(pane, list);
         string template;
         bool useShell = pane.ArchiveSession == null;
@@ -363,6 +378,8 @@ public sealed partial class MainWindow : Window
                 var c = columns[i];
                 string binding = c.Property.StartsWith("Properties[", StringComparison.Ordinal)
                     ? "Converter={StaticResource ArchivePropertyConverter}, ConverterParameter=" + c.Property[11..^1] : Escape(c.Property);
+                char time = c.Property switch { "ModifiedText" => 'M', "Created" => 'C', "Accessed" => 'A', _ => '\0' };
+                if (time != '\0') binding = $"Converter={{StaticResource FileTimeConverter}}, ConverterParameter={time}{pane.TimePrecision}{(pane.TimeUtc ? 'U' : 'L')}";
                 string text = "<TextBlock Text='{Binding " + binding + "}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='16,0,12,0'" + (c.Property == "SizeText" ? " TextAlignment='Right'" : "") + "/>";
                 template += c.Property == "Name"
                     ? "<Grid Grid.Column='" + i + "' Margin='16,0,0,0'><Grid.ColumnDefinitions><ColumnDefinition Width='26'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" + icon + "<TextBlock Tag='FileName' Grid.Column='1' Text='{Binding Name}' FontSize='14' VerticalAlignment='Center' TextTrimming='CharacterEllipsis' Margin='0,0,12,0'/></Grid>"
@@ -397,10 +414,10 @@ public sealed partial class MainWindow : Window
         if (useShell) ConfigureShellIcons(pane, list, iconSize);
         Grid.SetRow(list, 1); layout.Children.Add(list);
         pane.ListHost.Children.Add(layout);
-        foreach (var item in entries.Where(e => selected.Contains(e.Identity))) list.SelectedItems.Add(item);
+        if (selected.Count > 0) ApplySelectionRanges(list, entries, item => selected.Contains(item.Identity) ? true : null);
         list.SelectionChanged += (_, _) =>
         {
-            if (!ReferenceEquals(pane.List, list)) return;
+            if (!ReferenceEquals(pane.List, list) || pane.UpdatingSelection) return;
             UpdatePanelStatus(pane);
             if (pane == activePanel) UpdateFileCommands();
         };
@@ -412,6 +429,14 @@ public sealed partial class MainWindow : Window
                 if (!ReferenceEquals(target, this.list) || busy || closing) return;
                 target.ScrollIntoView(restore); target.UpdateLayout();
                 if (target.ContainerFromItem(restore) is Control container) container.Focus(FocusState.Programmatic);
+            });
+        }
+        if (oldTop != null)
+        {
+            list.Loaded += (_, _) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (ReferenceEquals(pane.List, list) && VisualChild<ScrollViewer>(list) is { } scroll)
+                    scroll.ChangeView(oldLeft, oldTop, null, true);
             });
         }
         UpdateStatus();
@@ -482,7 +507,22 @@ public sealed partial class MainWindow : Window
     {
         var pane = target ?? activePanel;
         string sort = pane.Sort;
-        Func<FileEntry, object?> key = sort switch { "SizeText" => e => e.Size, "ModifiedText" => e => e.Modified, "TypeText" => e => e.TypeText, _ => e => e.Name };
+        if (sort == "None")
+        {
+            pane.Entries = pane.Entries.OrderBy(entry => entry.SourceOrder).ToList();
+            return;
+        }
+        if (!pane.Columns.Any(column => column.Property == sort && ColumnInView(pane, column))) sort = "Name";
+        Func<FileEntry, object?> key = sort switch
+        {
+            "SizeText" => e => e.Size,
+            "ModifiedText" => e => e.Modified,
+            "Created" => e => e.Created,
+            "Accessed" => e => e.Accessed,
+            "AttributesText" => e => (int)e.Attributes,
+            "TypeText" => e => e.TypeText,
+            _ => e => e.Name
+        };
         if (sort.StartsWith("Properties[", StringComparison.Ordinal)) key = e => e.Properties?.GetValueOrDefault(sort[11..^1])?.SortKey;
         var ordered = pane.Entries.OrderByDescending(e => e.IsDirectory);
         pane.Entries = (pane.Descending ? ordered.ThenByDescending(key) : ordered.ThenBy(key)).ToList();
@@ -492,6 +532,7 @@ public sealed partial class MainWindow : Window
         foreach (var pane in panels) UpdatePanelStatus(pane);
         ExtractButton.IsEnabled = TestButton.IsEnabled = !busy && archive != null;
         MarkModeMenu.IsChecked = markMode;
+        UpdateTimeMenu();
         UpdateFileCommands();
     }
     private string Location => archive != null ? archivePath + " | " + archivePrefix : directory;
@@ -499,11 +540,43 @@ public sealed partial class MainWindow : Window
     private async Task Navigate(string path, bool remember = true)
     {
         if (busy || configuring || renameBox != null) return;
-        path = path.Trim();
-        if (path.Contains(" | ", StringComparison.Ordinal)) { ShowError("Для перехода внутри архива используйте список и кнопку «Вверх»."); return; }
-        if (Directory.Exists(path)) await NavigateDirectory(activePanel, path, remember);
-        else if (File.Exists(path)) await OpenArchive(path, remember);
+        path = path.Trim().Trim('"');
+        string archiveAddress = archivePath + " | ";
+        if (archiveSession != null && (path.StartsWith(archiveAddress, StringComparison.Ordinal) || path == archiveAddress.TrimEnd()))
+        {
+            string prefix = path.Length < archiveAddress.Length ? "" : path[archiveAddress.Length..].Replace('\\', '/').Trim('/');
+            if (prefix.Length > 0) prefix += "/";
+            if (prefix.Length == 0 || archiveEntries.Any(entry =>
+            {
+                string item = entry.Path.Replace('\\', '/');
+                return item.StartsWith(prefix, StringComparison.Ordinal) ||
+                    (entry.IsDirectory && item.AsSpan().SequenceEqual(prefix.AsSpan(0, prefix.Length - 1)));
+            }))
+            {
+                if (remember && archivePrefix != prefix) history.Push(CurrentLocation);
+                archivePrefix = prefix;
+                Notice.IsOpen = false;
+                ShowArchiveFolder();
+                return;
+            }
+            ShowError("Папка внутри открытого архива не найдена.");
+            return;
+        }
+        string basePath = archiveSession is { } session ? Path.GetDirectoryName(session.RootPath)! : directory;
+        try
+        {
+            if (path.Length > 0 && basePath.Length > 0 && !Path.IsPathFullyQualified(path)) path = Path.GetFullPath(path, basePath);
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { ShowError(error.Message); return; }
+        var pane = activePanel;
+        busy = true; UpdateStatus();
+        var kind = await Task.Run(() => Directory.Exists(path) ? 1 : File.Exists(path) ? 2 : 0);
+        busy = false;
+        if (closing) { Close(); return; }
+        if (kind == 1) await NavigateDirectory(pane, path, remember);
+        else if (kind == 2) await OpenArchive(path, remember);
         else ShowError("Путь не найден. Проверьте путь и повторите переход.");
+        if (!closing) UpdateStatus();
     }
 
     private async Task NavigateDirectory(PanelState pane, string path, bool remember, bool refresh = false)
@@ -512,25 +585,37 @@ public sealed partial class MainWindow : Window
         try
         {
             string fullPath = Path.GetFullPath(path);
-            var loaded = await Task.Run(() => new DirectoryInfo(fullPath).EnumerateFileSystemInfos().Select(info =>
+            var loaded = await Task.Run(() => new DirectoryInfo(fullPath).EnumerateFileSystemInfos().Select((info, index) =>
             {
                 FileAttributes attributes = info.Attributes;
                 bool dir = (attributes & FileAttributes.Directory) != 0;
-                return new FileEntry(info.FullName, info.Name, info.FullName, dir, dir ? null : (ulong)((FileInfo)info).Length, info.LastWriteTime, Attributes: attributes);
+                return new FileEntry(info.FullName, info.Name, info.FullName, dir, dir ? null : (ulong)((FileInfo)info).Length,
+                    info.LastWriteTimeUtc, Attributes: attributes, Created: info.CreationTimeUtc, Accessed: info.LastAccessTimeUtc, SourceOrder: index);
             }).ToList());
             if (closing) return;
-            if (remember && pane.Location.Path.Length > 0) pane.History.Push(pane.Location);
+            if (remember && pane.Location.Path.Length > 0 && (pane.ArchiveSession != null || pane.Directory != fullPath))
+                pane.History.Push(pane.Location);
+            if (remember) RememberPath(recentPaths, fullPath);
             CloseArchives(pane); pane.ArchivePrefix = "";
             ClearShellIconCache();
-            pane.Directory = fullPath; pane.Entries = loaded; ApplySort(pane); BuildList(pane);
+            bool wasUnavailable = !pane.DirectoryAvailable;
+            pane.Directory = fullPath; pane.DirectoryAvailable = true;
+            pane.Entries = loaded; ApplySort(pane); BuildList(pane, preserveViewport: refresh);
+            UpdateFolderWatch(pane);
             if (!refresh)
             {
                 pane.Address.Text = fullPath;
                 Notice.IsOpen = false;
             }
+            else if (wasUnavailable) Notice.IsOpen = false;
         }
         catch (Exception error)
         {
+            if (refresh)
+            {
+                pane.DirectoryAvailable = false;
+                UpdateFolderWatch(pane);
+            }
             ShowError(twoPanels ? $"{pane.Label}. {error.Message}" : error.Message);
             if (!refresh) pane.Address.Text = pane == activePanel ? Location : pane.Directory;
         }
@@ -550,8 +635,12 @@ public sealed partial class MainWindow : Window
         }, showSuccess: false, quietNotArchive: quietNotArchive);
         if (!closing && result?.HResult == 0 && candidate != null)
         {
-            if (remember && Location.Length > 0) history.Push(CurrentLocation);
+            if (remember && Location.Length > 0 &&
+                (archiveSession?.Parent != null || archiveSession?.RootPath != candidate.RootPath || archivePrefix.Length > 0))
+                history.Push(CurrentLocation);
+            if (remember) RememberPath(recentPaths, candidate.RootPath);
             CloseArchives(); archiveSession = candidate; archivePrefix = "";
+            UpdateFolderWatch(activePanel);
             RetainSessionColumns(candidate, loadedProperties);
             ShowArchiveFolder();
         }
@@ -619,9 +708,9 @@ public sealed partial class MainWindow : Window
                 if (!folders.TryGetValue(folder, out var values)) folders.Add(folder, values = []);
                 values.Add(entry);
             }
-            else children.Add(new("arc:" + archiveSession!.Identity + ":" + entry.Index, tail, path, false, entry.Size, entry.Modified, entry.Index, Properties: EntryProperties(entry.Index)));
+            else children.Add(new("arc:" + archiveSession!.Identity + ":" + entry.Index, tail, path, false, entry.Size, entry.Modified, entry.Index, Properties: EntryProperties(entry.Index), SourceOrder: entry.Index));
         }
-        foreach (var pair in folders) children.Add(new("folder:" + archiveSession!.Identity + ":" + archivePrefix + pair.Key, pair.Key, archivePrefix + pair.Key + "/", true, null, null, DescendantIndices: pair.Value.Select(e => e.Index).ToArray()));
+        foreach (var pair in folders) children.Add(new("folder:" + archiveSession!.Identity + ":" + archivePrefix + pair.Key, pair.Key, archivePrefix + pair.Key + "/", true, null, null, DescendantIndices: pair.Value.Select(e => e.Index).ToArray(), SourceOrder: pair.Value[0].Index));
         entries = children; ApplySort(); BuildList(); Address.Text = Location;
         FocusFileList();
     }
@@ -684,7 +773,7 @@ public sealed partial class MainWindow : Window
             UpdateStatus();
         }
         else if (archiveSession != null) await Navigate(Path.GetDirectoryName(archiveSession.RootPath)!);
-        else if (Directory.GetParent(directory) is { } folderParent) await Navigate(folderParent.FullName);
+        else if (directory.Length > 0 && Directory.GetParent(directory) is { } folderParent) await Navigate(folderParent.FullName);
     }
 
     private async Task Extract(bool test, IEnumerable<FileEntry>? explicitItems = null)
@@ -705,7 +794,7 @@ public sealed partial class MainWindow : Window
             AutomationProperties.SetName(field, "Папка назначения");
             var browse = new Button { Content = "Обзор…" };
             browse.Click += async (_, _) => { var picker = new FolderPicker(); picker.FileTypeFilter.Add("*"); WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this)); var folder = await picker.PickSingleFolderAsync(); if (folder != null) field.Text = folder.Path; };
-            var content = new StackPanel { Spacing = 12 }; content.Children.Add(new TextBlock { Text = "Извлечь в папку" }); content.Children.Add(field); content.Children.Add(browse); content.Children.Add(new TextBlock { Text = $"Выбрано файлов и папок в архиве: {indices.Length:N0}.\nПолные пути. При совпадении имён — запрос.", TextWrapping = TextWrapping.Wrap });
+            var content = new StackPanel { Spacing = 12 }; content.Children.Add(new TextBlock { Text = "Извлечь в папку" }); content.Children.Add(field); content.Children.Add(DestinationActions(browse, field, extractDestinations)); content.Children.Add(new TextBlock { Text = $"Выбрано файлов и папок в архиве: {indices.Length:N0}.\nПолные пути. При совпадении имён — запрос.", TextWrapping = TextWrapping.Wrap });
             var dialog = NewDialog("Извлечение", content, "Извлечь", "Отмена");
             dialog.Opened += (_, _) => { field.Focus(FocusState.Programmatic); field.SelectAll(); };
             configuring = true;
@@ -717,7 +806,8 @@ public sealed partial class MainWindow : Window
             destination = Path.GetFullPath(field.Text);
         }
         var target = archive;
-        await RunOperation(test ? "Проверка архива" : "Извлечение", job => target.Extract(indices, destination, job, test));
+        var result = await RunOperation(test ? "Проверка архива" : "Извлечение", job => target.Extract(indices, destination, job, test));
+        if (!test && result?.Succeeded == true) RememberPath(extractDestinations, destination);
         if (!test && !closing && OtherFilesystemDirectory.Length > 0)
             await NavigateDirectory(OtherPanel, OtherFilesystemDirectory, remember: false, refresh: true);
     }
@@ -920,7 +1010,6 @@ public sealed partial class MainWindow : Window
         if (closing) Close();
         else if (file != null) await Navigate(file.Path);
     }
-    private async void OnAddressKeyDown(object sender, KeyRoutedEventArgs e) { if (e.Key == VirtualKey.Enter) { e.Handled = true; await Navigate(Address.Text); } }
     private async void OnParent(object sender, RoutedEventArgs e) { if (!busy) await Parent(); }
     private async void OnBack(object sender, RoutedEventArgs e) => await GoBack();
     private async Task GoBack()
@@ -946,8 +1035,9 @@ public sealed partial class MainWindow : Window
             if (target.Session?.Parent != null) continue;
             if (target.Session != null)
             {
-                await OpenArchive(target.Path, false);
-                if (archiveSession?.RootPath == target.Path) { archivePrefix = target.Prefix; ShowArchiveFolder(); }
+                var reopened = await OpenArchive(target.Path, false);
+                if (!closing && reopened?.HResult == 0 && archiveSession?.RootPath == target.Path)
+                { archivePrefix = target.Prefix; ShowArchiveFolder(); }
             }
             else await Navigate(target.Path, false);
             UpdateStatus(); return;
@@ -966,7 +1056,7 @@ public sealed partial class MainWindow : Window
         // identity and parent chain. Root refresh opens a new source session.
         if (archiveSession?.Parent != null) ShowArchiveFolder();
         else if (archiveSession != null) await OpenArchive(archiveSession.RootPath, false);
-        else await Navigate(directory, false);
+        else if (directory.Length > 0) await NavigateDirectory(activePanel, directory, remember: false, refresh: true);
         if (closing) return;
         if (archiveSession == null || archiveSession.RootSourceStamp == stamp)
         {
@@ -978,8 +1068,6 @@ public sealed partial class MainWindow : Window
     }
     private async void OnExtract(object sender, RoutedEventArgs e) => await Extract(false);
     private async void OnTest(object sender, RoutedEventArgs e) => await Extract(true);
-    private void OnSelectAll(object sender, RoutedEventArgs e) => list.SelectAll();
-    private void OnClearSelection(object sender, RoutedEventArgs e) => list.SelectedItems.Clear();
     private void OnView(object sender, RoutedEventArgs e)
     {
         if (busy || configuring) return;
@@ -1013,6 +1101,31 @@ public sealed partial class MainWindow : Window
             if (!e.KeyStatus.WasKeyDown) await SetTwoPanels(!twoPanels);
             return;
         }
+        if (alt && !ctrl && !shift && e.Key is VirtualKey.F1 or VirtualKey.F2 or VirtualKey.F12)
+        {
+            e.Handled = true;
+            return;
+        }
+        if (FocusInActiveList())
+        {
+            if (!alt && !ctrl && !shift && e.Key is VirtualKey.Divide or (VirtualKey)0xDC)
+            {
+                e.Handled = true;
+                return;
+            }
+            if (ctrl && !alt && !shift && e.Key is >= VirtualKey.Number1 and <= VirtualKey.Number4)
+            {
+                e.Handled = true;
+                if (e.KeyStatus.WasKeyDown) return;
+                view = e.Key switch
+                {
+                    VirtualKey.Number1 => "LargeIcons", VirtualKey.Number2 => "SmallIcons",
+                    VirtualKey.Number3 => "List", _ => "Details"
+                };
+                BuildList(); FocusFileList();
+                return;
+            }
+        }
         if (twoPanels && FocusInActiveList())
         {
             if (!alt && !ctrl && !shift && e.Key == VirtualKey.Tab)
@@ -1038,12 +1151,29 @@ public sealed partial class MainWindow : Window
         if (ctrl && e.Key == VirtualKey.R && !busy) { OnRefresh(sender, e); e.Handled = true; }
     }
 
-    private void OnRootKeyUp(object sender, KeyRoutedEventArgs e)
+    private async void OnRootKeyUp(object sender, KeyRoutedEventArgs e)
     {
         // Rename replaces/removes its focused editor before key release. Keep
         // that release from activating a new row or WinUI's fallback menu focus.
         if (suppressRenameKeyRelease && e.Key is VirtualKey.Enter or VirtualKey.Escape)
-        { suppressRenameKeyRelease = false; e.Handled = true; }
+        { suppressRenameKeyRelease = false; e.Handled = true; return; }
+        if (!SelectionReady || KeyDown(VirtualKey.Control) || KeyDown(VirtualKey.Shift)) return;
+        if (KeyDown(VirtualKey.Menu))
+        {
+            if (e.Key == VirtualKey.F12) { e.Handled = true; OnPathHistory(sender, e); }
+            else if (e.Key is VirtualKey.F1 or VirtualKey.F2)
+            {
+                e.Handled = true;
+                var target = panels[e.Key == VirtualKey.F1 ? 0 : 1];
+                if (!twoPanels && activePanel != target) await SetTwoPanels(true);
+                await ChooseDrive(target);
+            }
+        }
+        else if (FocusInActiveList() && e.Key is VirtualKey.Divide or (VirtualKey)0xDC)
+        {
+            e.Handled = true;
+            await ChooseDrive(activePanel);
+        }
     }
 
     private async Task MeasureList()

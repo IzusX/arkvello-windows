@@ -30,6 +30,7 @@ public sealed partial class MainWindow
         public List<FileEntry> Entries { get; set; } = [];
         public FileEntry? Current { get; set; }
         public string Directory { get; set; } = "";
+        public bool DirectoryAvailable { get; set; }
         public string ArchivePrefix { get; set; } = "";
         public ArchiveSession? ArchiveSession { get; set; }
         public Stack<NavigationLocation> History { get; } = new();
@@ -40,6 +41,10 @@ public sealed partial class MainWindow
         public string Sort { get; set; } = "Name";
         public bool Descending { get; set; }
         public bool MarkMode { get; set; }
+        public string TimePrecision { get; set; } = "M";
+        public bool TimeUtc { get; set; }
+        public bool UpdatingSelection { get; set; }
+        public FolderWatch? Watch { get; set; }
         public NavigationLocation Location => new(ArchiveSession?.RootPath ?? Directory, ArchivePrefix, ArchiveSession);
     }
 
@@ -83,10 +88,32 @@ public sealed partial class MainWindow
             AddButton(new Button(), 1, Controls.FluentItemPaths.Parent, "На уровень вверх", "Backspace", OnParent);
             AddButton(new Button(), 2, Controls.FluentItemPaths.Refresh, "Обновить", "Ctrl+R", OnRefresh);
             pane.Address.Style = (Style)Root.Resources["PanelAddressStyle"];
-            pane.Address.KeyDown += (sender, args) =>
+            bool submitAddress = false;
+            pane.Address.PreviewKeyDown += (sender, args) =>
             {
-                if (ActivatePanel(pane)) OnAddressKeyDown(sender, args);
+                if (!ActivatePanel(pane) || !SelectionReady) return;
+                if (args.Key == VirtualKey.Enter)
+                {
+                    submitAddress = true;
+                    args.Handled = true;
+                }
+                else if (args.Key == VirtualKey.Escape)
+                {
+                    args.Handled = true;
+                    pane.Address.Text = Location;
+                    pane.Address.SelectAll();
+                }
             };
+            pane.Address.PreviewKeyUp += async (_, args) =>
+            {
+                if (args.Key != VirtualKey.Enter || !submitAddress) return;
+                submitAddress = false;
+                args.Handled = true;
+                if (!SelectionReady || !ActivatePanel(pane)) return;
+                await Navigate(pane.Address.Text);
+                if (!closing && !Notice.IsOpen) FocusFileList();
+            };
+            pane.Address.LostFocus += (_, _) => submitAddress = false;
             AutomationProperties.SetName(pane.Address, $"{pane.Label}: путь к папке или архиву");
             AddToBand(controls, pane.Address, 3);
             pane.ActiveLine.Style = (Style)Root.Resources["ActivePanelLineStyle"];
@@ -223,11 +250,17 @@ public sealed partial class MainWindow
         panelDivider.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         ApplyPanelWidths();
         UpdatePanelIndicators();
+        foreach (var pane in panels) UpdateFolderWatch(pane);
         TwoPanelsMenu.IsChecked = twoPanels;
         if (enabled && panels[1].Directory.Length == 0 && panels[1].ArchiveSession == null)
         {
             string path = archiveSession is { } session ? Path.GetDirectoryName(session.RootPath)! : directory;
             if (path.Length > 0) await NavigateDirectory(panels[1], path, remember: false);
+        }
+        else if (enabled && allowFolderWatches && autoRefresh && OtherPanel.ArchiveSession == null &&
+            OtherPanel.Directory.Length > 0)
+        {
+            await NavigateDirectory(OtherPanel, OtherPanel.Directory, remember: false, refresh: true);
         }
         if (!closing) FocusFileList();
     }

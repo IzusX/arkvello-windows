@@ -18,8 +18,9 @@ public sealed partial class MainWindow
     private bool renameCommitting;
     private bool suppressRenameKeyRelease;
     private FileEntry[] OperatedFiles() => list.SelectedItems.Count > 0 ? list.SelectedItems.Cast<FileEntry>().ToArray() : CurrentItem() is { } item ? [item] : [];
-    private bool FilesystemReady => archiveSession == null && directory.Length > 0 && !busy && !configuring && renameBox == null;
-    private string OtherFilesystemDirectory => twoPanels && OtherPanel.ArchiveSession == null ? OtherPanel.Directory : "";
+    private bool FilesystemReady => archiveSession == null && activePanel.DirectoryAvailable && SelectionReady;
+    private string OtherFilesystemDirectory => twoPanels && OtherPanel.ArchiveSession == null &&
+        OtherPanel.DirectoryAvailable ? OtherPanel.Directory : "";
     private static bool KeyDown(VirtualKey key) => Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     private void UpdateFileCommands()
@@ -66,7 +67,7 @@ public sealed partial class MainWindow
             catch (Exception error) { errorText.Text = error.Message; }
         };
         var body = new StackPanel { Spacing = 12, MaxWidth = 520 };
-        body.Children.Add(new TextBlock { Text = $"Выбрано элементов: {paths.Length:N0}", TextWrapping = TextWrapping.Wrap }); body.Children.Add(destination); body.Children.Add(browse); body.Children.Add(errorText);
+        body.Children.Add(new TextBlock { Text = $"Выбрано элементов: {paths.Length:N0}", TextWrapping = TextWrapping.Wrap }); body.Children.Add(destination); body.Children.Add(DestinationActions(browse, destination, transferDestinations)); body.Children.Add(errorText);
         var dialog = NewDialog(move ? "Переместить" : "Копировать", body, move ? "Переместить" : "Копировать", "Отмена");
         string? target = null;
         dialog.PrimaryButtonClick += (_, args) =>
@@ -82,7 +83,8 @@ public sealed partial class MainWindow
         try { answer = await dialog.ShowAsync(); }
         finally { configuring = false; UpdateStatus(); }
         if (closing || answer != ContentDialogResult.Primary || target == null) { FocusFileList(); return; }
-        await TransferFiles(paths, target, move);
+        var result = await TransferFiles(paths, target, move);
+        if (result?.Succeeded == true) RememberPath(transferDestinations, target);
     }
 
     private async Task<ArchiveResult?> TransferFiles(string[] paths, string destination, bool move)
@@ -282,16 +284,20 @@ public sealed partial class MainWindow
             else if (e.Key == VirtualKey.F5 && !ctrl && !KeyDown(VirtualKey.Menu)) { e.Handled = true; await TransferDialog(false, shift); }
             else if (e.Key == VirtualKey.F6 && !ctrl && !KeyDown(VirtualKey.Menu)) { e.Handled = true; await TransferDialog(true, shift); }
             else if (e.Key == VirtualKey.F7 || ctrl && shift && e.Key == VirtualKey.N) { e.Handled = true; await CreateItem(true); }
+            else if (ctrl && e.Key == VirtualKey.N && !KeyDown(VirtualKey.Menu)) { e.Handled = true; await CreateItem(false); }
             else if (e.Key == VirtualKey.Delete) { e.Handled = true; await DeleteFiles(true); }
         };
         target.DragItemsStarting += (_, e) =>
         {
             if (!ReferenceEquals(pane.List, target) || !ActivatePanel(pane) || !FilesystemReady) { e.Cancel = true; return; }
             string[] paths = e.Items.Cast<FileEntry>().Select(f => f.FullPath).ToArray();
+            if (paths.Length == 0) { e.Cancel = true; return; }
+            fileDragInProgress = true;
             SetDraggedFiles(e.Data, paths);
         };
         target.DragItemsCompleted += async (_, _) =>
         {
+            fileDragInProgress = false;
             if (!busy && !configuring && !closing && pane.ArchiveSession == null && pane.Directory.Length > 0 && ReferenceEquals(pane.List, target))
                 await NavigateDirectory(pane, pane.Directory, remember: false, refresh: true);
         };
@@ -305,7 +311,7 @@ public sealed partial class MainWindow
         {
             e.Handled = true; e.AcceptedOperation = DataPackageOperation.None;
             if (busy || configuring || renameBox != null || pane.ArchiveSession != null ||
-                pane.Directory.Length == 0 || !e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+                !pane.DirectoryAvailable || !e.DataView.Contains(StandardDataFormats.StorageItems)) return;
             if (e.Modifiers.HasFlag(Windows.ApplicationModel.DataTransfer.DragDrop.DragDropModifiers.Control) &&
                 e.Modifiers.HasFlag(Windows.ApplicationModel.DataTransfer.DragDrop.DragDropModifiers.Shift)) return; // Link effect is not implemented.
             bool move = e.Modifiers.HasFlag(Windows.ApplicationModel.DataTransfer.DragDrop.DragDropModifiers.Shift);

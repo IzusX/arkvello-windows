@@ -3,10 +3,12 @@ namespace Arkvello.Models;
 
 public sealed record FileEntry(string Identity, string Name, string FullPath, bool IsDirectory,
     ulong? Size, DateTime? Modified, uint? ArchiveIndex = null, uint[]? DescendantIndices = null,
-    IReadOnlyDictionary<string, ArchiveProperty>? Properties = null, FileAttributes Attributes = FileAttributes.Normal)
+    IReadOnlyDictionary<string, ArchiveProperty>? Properties = null, FileAttributes Attributes = FileAttributes.Normal,
+    DateTime? Created = null, DateTime? Accessed = null, long SourceOrder = 0)
 {
     public string SizeText => Size is { } size ? size.ToString("N0") + " Б" : "";
-    public string ModifiedText => Modified?.ToString("dd.MM.yyyy HH:mm") ?? "";
+    public string ModifiedText => Modified?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "";
+    public string AttributesText => Attributes.ToString();
     public string TypeText => IsDirectory ? "Папка" : ArchiveIndex != null ? "Файл в архиве" : Path.GetExtension(Name).TrimStart('.').ToUpperInvariant() is { Length: > 0 } ext ? ext + " — файл" : "Файл";
     public Microsoft.UI.Xaml.Visibility FolderVisibility => IsDirectory ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FileVisibility => IsDirectory ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
