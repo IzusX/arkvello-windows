@@ -369,6 +369,9 @@ Executed checks:
   and did not repeat the preceding real-window navigation acceptance pass.
 
 `Native archive services` CI now repeats the independent build and backend suite
-on a fresh Windows runner, failing if old FM/GUI build directories appear. This
-is build/integration coverage, not clean-machine end-user deployment or a native
-UI/accessibility acceptance pass. The other stage-3 gates remain open.
+on a fresh Windows runner, failing if old FM/GUI build directories appear.
+[First run](https://github.com/IzusX/arkvello-windows/actions/runs/44216519571)
+passed on windows-2022 for commit `f1705d3`, including service build, production
+adapter checks and evidence upload. This is build/integration coverage, not
+clean-machine end-user deployment or a native UI/accessibility acceptance pass.
+The other stage-3 gates remain open.
