@@ -58,6 +58,12 @@ upstream guards, cancellation/partial-output behavior and integration limits.
   published client. `build/stage4-client-regression.log`; committed
   [client regression evidence](validation/stage4-client-regression.json).
 
+Fresh-runner CI also passed for code commit `cdb38b9`:
+[Native archive services, run 44236979795](https://github.com/IzusX/arkvello-windows/actions/runs/44236979795).
+In 2m27s it built the service closure, passed 99 archive and 47 filesystem checks,
+published the self-contained client and uploaded evidence. It did not run a
+desktop GUI, change the clipboard or certify Explorer/Recycle Bin behavior.
+
 Two RenderTargetBitmap captures were visually inspected in light/dark. They
 omit DWM/Mica and have the previously recorded composition limitations (including
 transparent/incorrect-looking address/caption pixels); they do not certify actual
