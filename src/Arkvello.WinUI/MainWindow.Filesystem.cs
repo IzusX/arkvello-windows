@@ -26,14 +26,21 @@ public sealed partial class MainWindow
     private void UpdateFileCommands()
     {
         bool selected = FilesystemReady && (list.SelectedItems.Count > 0 || CurrentItem() != null);
+        ExtractButton.IsEnabled = TestButton.IsEnabled = ExtractMenu.IsEnabled = TestMenu.IsEnabled = CanExtractOrTest;
+        AddToArchiveButton.IsEnabled = AddToArchiveMenu.IsEnabled = selected;
         CopyToButton.IsEnabled = CopyToMenu.IsEnabled = ClipboardCopyMenu.IsEnabled = ClipboardCutMenu.IsEnabled = selected;
-        MoveToButton.IsEnabled = MoveToMenu.IsEnabled = DeleteButton.IsEnabled = DeleteMenu.IsEnabled = selected;
+        MoveToButton.IsEnabled = MoveToMenu.IsEnabled = selected;
+        DeleteButton.IsEnabled = DeleteMenu.IsEnabled = selected || CanDeleteArchiveItems;
         RenameMenu.IsEnabled = FilesystemReady && CurrentItem() != null;
         NewFolderMenu.IsEnabled = NewFileMenu.IsEnabled = PasteMenu.IsEnabled = FilesystemReady;
     }
     private async void OnCopyTo(object sender, RoutedEventArgs e) => await TransferDialog(false);
     private async void OnMoveTo(object sender, RoutedEventArgs e) => await TransferDialog(true);
-    private async void OnDelete(object sender, RoutedEventArgs e) => await DeleteFiles(true);
+    private async void OnDelete(object sender, RoutedEventArgs e)
+    {
+        if (archiveSession != null) await DeleteArchiveItems();
+        else await DeleteFiles(true);
+    }
     private async void OnNewFolder(object sender, RoutedEventArgs e) => await CreateItem(true);
     private async void OnNewFile(object sender, RoutedEventArgs e) => await CreateItem(false);
     private void OnRename(object sender, RoutedEventArgs e) => BeginRename();
@@ -274,6 +281,8 @@ public sealed partial class MainWindow
     {
         target.PreviewKeyDown += async (_, e) =>
         {
+            if (!e.Handled && e.Key == VirtualKey.Delete && CanDeleteArchiveItems && ReferenceEquals(target, list))
+            { e.Handled = true; await DeleteArchiveItems(); return; }
             if (e.Handled || !FilesystemReady || !ReferenceEquals(target, list)) return;
             bool ctrl = KeyDown(VirtualKey.Control), shift = KeyDown(VirtualKey.Shift);
             if (ctrl && e.Key == VirtualKey.C || ctrl && e.Key == VirtualKey.Insert) { e.Handled = true; await CopyToClipboard(false); }

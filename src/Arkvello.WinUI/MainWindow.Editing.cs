@@ -29,6 +29,8 @@ public sealed partial class MainWindow
         var edit = new MenuFlyoutItem { Text = "Редактировать в Блокноте…", KeyboardAcceleratorTextOverride = "F4" };
         edit.Click += async (_, _) => await EditCurrent();
         var extract = new MenuFlyoutItem { Text = "Извлечь…" }; extract.Click += OnExtract;
+        var test = new MenuFlyoutItem { Text = "Проверить архив" }; test.Click += OnTest;
+        var add = new MenuFlyoutItem { Text = "Добавить в архив…" }; add.Click += OnAddToArchive;
         var refresh = new MenuFlyoutItem { Text = "Обновить", KeyboardAcceleratorTextOverride = "Ctrl+R" }; refresh.Click += OnRefresh;
         var properties = new MenuFlyoutItem { Text = "Столбцы…" }; properties.Click += OnColumns;
         var copy = new MenuFlyoutItem { Text = "Копировать", KeyboardAcceleratorTextOverride = "Ctrl+C" }; copy.Click += OnClipboardCopy;
@@ -37,7 +39,7 @@ public sealed partial class MainWindow
         var rename = new MenuFlyoutItem { Text = "Переименовать", KeyboardAcceleratorTextOverride = "F2" }; rename.Click += OnRename;
         var delete = new MenuFlyoutItem { Text = "Удалить…", KeyboardAcceleratorTextOverride = "Delete" }; delete.Click += OnDelete;
         var folder = new MenuFlyoutItem { Text = "Создать папку…", KeyboardAcceleratorTextOverride = "F7" }; folder.Click += OnNewFolder;
-        menu.Items.Add(open); menu.Items.Add(edit); menu.Items.Add(extract); menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(open); menu.Items.Add(edit); menu.Items.Add(add); menu.Items.Add(extract); menu.Items.Add(test); menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(copy); menu.Items.Add(cut); menu.Items.Add(paste); menu.Items.Add(rename); menu.Items.Add(delete); menu.Items.Add(folder);
         menu.Items.Add(new MenuFlyoutSeparator()); menu.Items.Add(refresh); menu.Items.Add(properties);
         menu.Opening += (_, _) =>
@@ -46,9 +48,11 @@ public sealed partial class MainWindow
             var item = CurrentItem(); bool ready = !busy && !configuring;
             open.IsEnabled = ready && item != null;
             edit.IsEnabled = ready && archiveSession != null && item is { IsDirectory: false, ArchiveIndex: not null };
-            extract.IsEnabled = ready && archiveSession != null;
+            extract.IsEnabled = test.IsEnabled = CanExtractOrTest;
+            add.IsEnabled = FilesystemReady && OperatedFiles().Length > 0;
             refresh.IsEnabled = ready; properties.IsEnabled = ready;
-            copy.IsEnabled = cut.IsEnabled = delete.IsEnabled = FilesystemReady && OperatedFiles().Length > 0;
+            copy.IsEnabled = cut.IsEnabled = FilesystemReady && OperatedFiles().Length > 0;
+            delete.IsEnabled = copy.IsEnabled || CanDeleteArchiveItems;
             rename.IsEnabled = FilesystemReady && item != null; paste.IsEnabled = folder.IsEnabled = FilesystemReady;
         };
         AutomationProperties.SetHelpText(list, pane.MarkMode

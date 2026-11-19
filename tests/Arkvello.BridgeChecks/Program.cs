@@ -35,6 +35,168 @@ NativeArchive Open(string name, string? password = null)
     Check("open " + name, opened.Result.Succeeded && opened.Archive != null);
     return opened.Archive!;
 }
+int Original7Zip(params string[] arguments)
+{
+    var start = new ProcessStartInfo(Path.Combine(repo, "build", "windows-x64", "7z.exe"))
+    {
+        UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+    };
+    foreach (string argument in arguments) start.ArgumentList.Add(argument);
+    using var process = Process.Start(start)!;
+    var output = process.StandardOutput.ReadToEndAsync();
+    var errors = process.StandardError.ReadToEndAsync();
+    process.WaitForExit();
+    Task.WaitAll(output, errors);
+    if (process.ExitCode != 0) Console.WriteLine(output.Result + errors.Result);
+    return process.ExitCode;
+}
+void CheckArchiveWriting()
+{
+    var formats = ArchiveWriting.Formats();
+    Check("read writable formats from adjacent codec", new[] { "7z", "zip", "tar", "gzip", "xz" }
+        .All(name => formats.Any(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase))));
+    string output = Path.Combine(root, "write"); Directory.CreateDirectory(output);
+    string member = Path.Combine(input, "точный [1].txt");
+    string folder = Path.Combine(input, "папка");
+    var properties = new Dictionary<string, string> { ["x"] = "5" };
+    var request = new ArchiveWriteRequest(Path.Combine(output, "данные.7z"), "7z", [member, folder], properties, []);
+    using (var job = new ArchiveJob(_ => new()))
+    {
+        var result = ArchiveWriting.Run(request, job);
+        Check($"create 7z through service (0x{result.HResult:X8}, {string.Join(" / ", result.Issues.Select(e => e.Path1))})", result.Succeeded);
+    }
+    string extracted = Path.Combine(output, "extracted");
+    Check("original 7-Zip extracts exact Unicode files and folder hierarchy",
+        Original7Zip("x", "-y", "-o" + extracted, request.Destination) == 0 &&
+        File.ReadAllBytes(Path.Combine(extracted, Path.GetFileName(member))).SequenceEqual(File.ReadAllBytes(member)) &&
+        File.ReadAllBytes(Path.Combine(extracted, "папка", "inner.txt")).SequenceEqual(File.ReadAllBytes(Path.Combine(folder, "inner.txt"))));
+    using (var job = new ArchiveJob(_ => new()))
+    using (var archive = NativeArchive.Open(request.Destination, job).Archive!)
+    {
+        var entries = archive.ReadEntries();
+        uint inner = entries.Single(e => e.Path.EndsWith("inner.txt")).Index;
+        uint top = entries.Single(e => e.Path == Path.GetFileName(member)).Index;
+        string flat = Path.Combine(output, "flat"); Directory.CreateDirectory(flat);
+        File.WriteAllText(Path.Combine(flat, "inner.txt"), "existing");
+        Check("flat extraction and rename-existing policy", archive.Extract([inner], flat, job,
+            settings: new(ArchiveExtractPath.Flat, ArchiveOverwrite.RenameExisting)).Succeeded &&
+            File.ReadAllText(Path.Combine(flat, "inner.txt")) == "nested folder" &&
+            Directory.GetFiles(flat, "inner*").Any(p => File.ReadAllText(p) == "existing"));
+        string relative = Path.Combine(output, "relative");
+        Check("extract relative to open archive folder", archive.Extract([inner], relative, job,
+            settings: new(ArchiveExtractPath.Current, RelativePrefix: "папка")).Succeeded &&
+            File.ReadAllText(Path.Combine(relative, "inner.txt")) == "nested folder");
+        string selective = Path.Combine(output, "selected-deletion.7z");
+        Check("delete exact native index through Agent", archive.CanDeleteItems && archive.DeleteItems([top], selective, job).Succeeded);
+        using var retained = NativeArchive.Open(selective, job).Archive!;
+        Check("deletion preserves folder and remaining member", retained.ReadEntries().Count == 2 &&
+            retained.ReadEntries().Any(e => e.Path.EndsWith("inner.txt")) &&
+            !retained.ReadEntries().Any(e => e.Path == Path.GetFileName(member)));
+        string empty = Path.Combine(output, "empty-deletion.7z");
+        Check("delete all entries writes a readable empty archive", archive.DeleteItems(entries.Select(e => e.Index).ToArray(), empty, job).Succeeded);
+        using var emptyArchive = NativeArchive.Open(empty, job).Archive!;
+        Check("empty archive can be opened", emptyArchive.ReadEntries().Count == 0);
+    }
+    using (var job = new ArchiveJob(_ => new()))
+        Check("update preserves unselected archive members", ArchiveWriting.Run(request with
+        { UpdateExisting = true, Paths = [Path.Combine(input, "another.txt")] }, job).Succeeded);
+    using (var job = new ArchiveJob(_ => new()))
+    using (var archive = NativeArchive.Open(request.Destination, job).Archive!)
+        Check("updated archive contains both old and new members", archive.ReadEntries().Any(e => e.Path == "another.txt") &&
+            archive.ReadEntries().Any(e => e.Path == Path.GetFileName(member)));
+    using (var job = new ArchiveJob(_ => new()))
+        Check("create encrypted ZIP", ArchiveWriting.Run(request with
+        {
+            Destination = Path.Combine(output, "password.zip"), Format = "ZIP",
+            Password = "Fixture-Stage5", Properties = new Dictionary<string, string> { ["x"] = "5", ["em"] = "AES256" }
+        }, job).Succeeded);
+    Check("original 7-Zip tests encrypted ZIP", Original7Zip("t", "-pFixture-Stage5", Path.Combine(output, "password.zip")) == 0);
+    using (var job = new ArchiveJob(_ => new()))
+        Check("create encrypted headers in 7z", ArchiveWriting.Run(request with
+        {
+            Destination = Path.Combine(output, "headers.7z"), Password = "Fixture-Stage5",
+            Properties = new Dictionary<string, string> { ["x"] = "5", ["he"] = "on" }
+        }, job).Succeeded);
+    Check("original 7-Zip tests encrypted headers", Original7Zip("t", "-pFixture-Stage5", Path.Combine(output, "headers.7z")) == 0);
+    int passwordRequests = 0;
+    bool retriedPassword = false;
+    using (var job = new ArchiveJob(e =>
+    {
+        if (e.Kind != ArchiveEventKind.Password) return new();
+        passwordRequests++;
+        retriedPassword |= (e.Flags & ArchiveJob.RetryPassword) != 0;
+        return new(0, passwordRequests == 1 ? "wrong" : "Fixture-Stage5");
+    }))
+    {
+        var opened = job.OpenWithPasswordRetry(() => NativeArchive.Open(Path.Combine(output, "headers.7z"), job));
+        using var encrypted = opened.Value;
+        Check("retry encrypted headers with a corrected password", encrypted != null && opened.Result.Succeeded && retriedPassword && passwordRequests == 2);
+    }
+    string sfx = Path.Combine(output, "self-extract.exe");
+    using (var job = new ArchiveJob(_ => new()))
+        Check("create self-extracting 7z", ArchiveWriting.Run(request with
+        { Destination = sfx, SfxModule = Path.Combine(repo, "build", "windows-x64", "7z.sfx") }, job).Succeeded);
+    Check("original 7-Zip opens SFX archive", File.ReadAllBytes(sfx).AsSpan(0, 2).SequenceEqual("MZ"u8) &&
+        Original7Zip("t", sfx) == 0);
+    string split = Path.Combine(output, "parts.7z");
+    using (var job = new ArchiveJob(_ => new()))
+        Check("create several 7z volumes", ArchiveWriting.Run(request with
+        { Destination = split, Properties = new Dictionary<string, string> { ["x"] = "0" }, Volumes = [40, 60] }, job).Succeeded);
+    Check("original 7-Zip tests split archive", new FileInfo(split + ".001").Length == 40 &&
+        new FileInfo(split + ".002").Length == 60 && Original7Zip("t", split + ".001") == 0);
+    string disposable = Path.Combine(input, "remove-after-archive.txt");
+    File.WriteAllText(disposable, "preserve this in the archive");
+    string published = Path.Combine(output, "source-removal.7z");
+    var removal = request with
+    {
+        Destination = published, Paths = [disposable], Volumes = [40], Flags = ArchiveWriteFlags.DeleteSources
+    };
+    File.WriteAllText(published + ".002", "existing volume");
+    using (var job = new ArchiveJob(_ => new()))
+    {
+        bool conflict = false;
+        try { ArchiveWriting.Run(removal, job); }
+        catch (IOException) { conflict = true; }
+        Check("volume publication conflict keeps sources and existing volume intact",
+            conflict && File.Exists(disposable) && !File.Exists(published + ".001") && File.ReadAllText(published + ".002") == "existing volume");
+    }
+    File.Delete(published + ".002");
+    using (var job = new ArchiveJob(_ => new()))
+        Check("source removal runs after publishing all volumes",
+            ArchiveWriting.Run(removal, job).Succeeded && !File.Exists(disposable) && Original7Zip("t", published + ".001") == 0);
+    byte[] before = File.ReadAllBytes(request.Destination);
+    bool cancelledDuringWriting = false, addingLargeFile = false;
+    using (var job = new ArchiveJob(e =>
+    {
+        if (e.Kind == ArchiveEventKind.CurrentPath && e.Path1.EndsWith("large.bin")) addingLargeFile = true;
+        if (!addingLargeFile || e.Kind != ArchiveEventKind.Progress || e.Completed == 0) return new();
+        cancelledDuringWriting = true;
+        return new(-1);
+    }))
+        Check("cancel update while writing retains original archive", ArchiveWriting.Run(request with
+        {
+            UpdateExisting = true, Paths = [Path.Combine(input, "large.bin")],
+            Properties = new Dictionary<string, string> { ["x"] = "0" }
+        }, job).Cancelled && cancelledDuringWriting && File.ReadAllBytes(request.Destination).SequenceEqual(before));
+    using (var job = new ArchiveJob(_ => new()))
+        Check("missing input reports an issue without publishing", !ArchiveWriting.Run(request with
+        {
+            Destination = Path.Combine(output, "missing.7z"), Paths = [Path.Combine(input, "missing.txt")]
+        }, job).Succeeded && !File.Exists(Path.Combine(output, "missing.7z")));
+    Check("completed and failed operations remove owned staging folders", !Directory.EnumerateDirectories(output, ".arkvello-*").Any());
+    foreach (var (format, extension, paths, options) in new[]
+    {
+        ("tar", ".tar", new[] { member, folder }, new Dictionary<string, string> { ["m"] = "POSIX" }),
+        ("gzip", ".gz", new[] { member }, new Dictionary<string, string> { ["x"] = "5", ["m"] = "Deflate" }),
+        ("xz", ".xz", new[] { member }, new Dictionary<string, string> { ["x"] = "3", ["mt"] = "1", ["d"] = "1m" })
+    })
+    {
+        string name = Path.Combine(output, "format" + extension);
+        using var job = new ArchiveJob(_ => new());
+        var result = ArchiveWriting.Run(request with { Destination = name, Format = format, Paths = paths, Properties = options }, job);
+        Check($"create and test {format} (0x{result.HResult:X8})", result.Succeeded && Original7Zip("t", name) == 0);
+    }
+}
 try
 {
     Check("adjacent native payload loads", NativeDependencies.Check(AppContext.BaseDirectory) == null);
@@ -42,6 +204,7 @@ try
     string badPayload = Path.Combine(root, "bad-payload"); Directory.CreateDirectory(badPayload);
     File.WriteAllText(Path.Combine(badPayload, "Arkvello.Native.dll"), "not a Windows DLL");
     Check("invalid native DLL has an actionable message", NativeDependencies.Check(badPayload)?.Contains("Windows x64", StringComparison.Ordinal) == true);
+    CheckArchiveWriting();
     Make("sample.7z"); Make("encrypted.7z", "-pStage3FixtureOnly", "-mhe=on");
     using (var pausedHash = new ManualResetEventSlim())
     using (var hashJob = new ArchiveJob(e => { if (e.Kind == ArchiveEventKind.Paused) pausedHash.Set(); return new(); }))

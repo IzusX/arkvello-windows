@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <shobjidl.h>
 #include <sherrors.h>
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
@@ -14,6 +15,7 @@
 #include "../../CPP/7zip/UI/Common/ArchiveExtractCallback.h"
 #include "../../CPP/7zip/UI/Agent/Agent.h"
 #include "../../CPP/7zip/UI/Common/PropIDUtils.h"
+#include "../../CPP/7zip/UI/Common/Update.h"
 #include "../../CPP/7zip/UI/FileManager/FSFolder.h"
 #include "../../CPP/7zip/Common/FilePathAutoRename.h"
 
@@ -239,6 +241,122 @@ public:
   HRESULT Open_CryptoGetTextPassword(BSTR *password) override { return job.password(password); }
 };
 
+HRESULT LoadAdjacentCodecs(CCodecs &codecs) {
+  wchar_t module[32768];
+  DWORD len = GetModuleFileNameW(g_hInstance, module, 32768);
+  if (!len || len >= 32768) return E_FAIL;
+  std::wstring dll(module, len);
+  dll.resize(dll.find_last_of(L"\\/") + 1); dll += L"7z.dll";
+  bool loaded = false;
+  RINOK(codecs.LoadDll(dll.c_str(), false, &loaded))
+  if (!loaded) return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
+  codecs.NeedSetLibCodecs = false;
+  return S_OK;
+}
+
+class WriteCallback final : public IUpdateCallbackUI2, public IOpenCallbackUI {
+  Job &job;
+  const wchar_t *initialPassword;
+  CMyComBSTR_Wipe openPassword;
+  const UStringVector &removablePaths;
+  bool publishedBeforeDeleting = false;
+  HRESULT ConfirmPublished() {
+    RINOK(job.check())
+    if (publishedBeforeDeleting) return S_OK;
+    AvEvent e{}; e.kind = 12;
+    int answer = 0;
+    RINOK(job.emit(e, nullptr, 0, &answer))
+    if (answer != 1) return E_FAIL;
+    publishedBeforeDeleting = true;
+    return S_OK;
+  }
+  HRESULT Path(const wchar_t *path) {
+    RINOK(job.check())
+    AvEvent e{}; e.kind = 6; e.path1 = path; return job.emit(e);
+  }
+  HRESULT FileError(const FString &path, DWORD error) {
+    AvEvent e{}; e.kind = 5; e.code = error; e.flags = 0x20000; e.path1 = path;
+    RINOK(job.emit(e))
+    return HRESULT_FROM_WIN32(error ? error : ERROR_READ_FAULT);
+  }
+public:
+  WriteCallback(Job &value, const wchar_t *password, const UStringVector &paths)
+    : job(value), initialPassword(password), removablePaths(paths) {}
+  HRESULT Open_CheckBreak() override { return job.check(); }
+  HRESULT Open_SetTotal(const UInt64 *, const UInt64 *bytes) override { return SetTotal(bytes ? *bytes : 0); }
+  HRESULT Open_SetCompleted(const UInt64 *, const UInt64 *bytes) override { return SetCompleted(bytes); }
+  HRESULT Open_Finished() override { return job.check(); }
+  HRESULT Open_CryptoGetTextPassword(BSTR *password) override {
+    if (initialPassword) return CryptoGetTextPassword(password);
+    RINOK(job.password(password))
+    openPassword.Wipe_and_Free();
+    *(&openPassword) = SysAllocString(*password);
+    return (const wchar_t *)openPassword ? S_OK : E_OUTOFMEMORY;
+  }
+  HRESULT CryptoGetTextPassword2(Int32 *defined, BSTR *password) override {
+    RINOK(job.check())
+    const wchar_t *value = initialPassword ? initialPassword : (const wchar_t *)openPassword;
+    *defined = value != nullptr;
+    *password = value ? SysAllocString(value) : nullptr;
+    return value && !*password ? E_OUTOFMEMORY : S_OK;
+  }
+  HRESULT CryptoGetTextPassword(BSTR *password) override {
+    Int32 defined = 0;
+    RINOK(CryptoGetTextPassword2(&defined, password))
+    return defined ? S_OK : job.password(password);
+  }
+  HRESULT OpenResult(const CCodecs *, const CArchiveLink &link, const wchar_t *name, HRESULT result) override {
+    if (result != S_OK) return result;
+    for (unsigned i = 0; i < link.Arcs.Size(); ++i) {
+      const auto &info = link.Arcs[i].ErrorInfo;
+      if (info.ErrorFlags || info.WarningFlags) {
+        AvEvent e{}; e.kind = 5; e.code = 0x100; e.path1 = name;
+        e.size1 = info.ErrorFlags; e.size2 = info.WarningFlags;
+        RINOK(job.emit(e))
+        return E_FAIL;
+      }
+    }
+    return job.check();
+  }
+  HRESULT StartScanning() override { return SetTotal(0); }
+  HRESULT FinishScanning(const CDirItemsStat &) override { return job.check(); }
+  HRESULT StartOpenArchive(const wchar_t *path) override { return Path(path); }
+  HRESULT StartArchive(const wchar_t *path, bool) override { return Path(path); }
+  HRESULT FinishArchive(const CFinishArchiveStat &) override { return job.check(); }
+  HRESULT DeletingAfterArchiving(const FString &path, bool isDir) override {
+    bool selected = false;
+    for (unsigned i = 0; !isDir && i < removablePaths.Size(); ++i)
+      if (path.Compare(removablePaths[i]) == 0) { selected = true; break; }
+    if (!selected) return FileError(path, ERROR_INVALID_PARAMETER);
+    RINOK(ConfirmPublished())
+    return Path(path);
+  }
+  HRESULT FinishDeletingAfterArchiving() override { return ConfirmPublished(); }
+  HRESULT MoveArc_Start(const wchar_t *, const wchar_t *path, UInt64, Int32) override { return Path(path); }
+  HRESULT MoveArc_Progress(UInt64 total, UInt64 current) override { job.total = total; return job.progress(&current); }
+  HRESULT MoveArc_Finish() override { return job.check(); }
+  HRESULT ScanError(const FString &path, DWORD error) override { return FileError(path, error); }
+  HRESULT ScanProgress(const CDirItemsStat &, const FString &path, bool) override { return Path(path); }
+  HRESULT WriteSfx(const wchar_t *path, UInt64) override { return Path(path); }
+  HRESULT SetTotal(UInt64 size) override { job.total = size; return job.check(); }
+  HRESULT SetCompleted(const UInt64 *value) override { return job.progress(value); }
+  HRESULT SetRatioInfo(const UInt64 *, const UInt64 *) override { return job.check(); }
+  HRESULT CheckBreak() override { return job.check(); }
+  HRESULT SetNumItems(const CArcToDoStat &) override { return job.check(); }
+  HRESULT GetStream(const wchar_t *path, bool, bool, UInt32) override { return Path(path); }
+  HRESULT OpenFileError(const FString &path, DWORD error) override { return FileError(path, error); }
+  HRESULT ReadingFileError(const FString &path, DWORD error) override { return FileError(path, error); }
+  HRESULT SetOperationResult(Int32 result) override { return result == 0 ? job.check() : E_FAIL; }
+  HRESULT ReportExtractResult(Int32 result, Int32 encrypted, const wchar_t *path) override {
+    if (result == 0) return job.check();
+    AvEvent e{}; e.kind = 5; e.code = (uint32_t)result; e.flags = (uint32_t)encrypted | 0x10000u; e.path1 = path;
+    RINOK(job.emit(e))
+    return E_FAIL;
+  }
+  HRESULT ReportUpdateOperation(UInt32, const wchar_t *path, bool) override { return Path(path); }
+  HRESULT ShowDeleteFile(const wchar_t *path, bool) override { return Path(path); }
+};
+
 class ExtractCallback final : public IFolderArchiveExtractCallback,
   public ICryptoGetTextPassword, public IArchiveRequestMemoryUseCallback, public CMyUnknownImp {
   Z7_COM_QI_BEGIN2(IFolderArchiveExtractCallback)
@@ -385,9 +503,19 @@ public:
   Z7_COM7F_IMF(ReportExtractResult(Int32 r, Int32, const wchar_t *p)) { return r == 0 ? job.check() : issue(p, E_FAIL); }
   Z7_COM7F_IMF(ReportUpdateOperation(UInt32, const wchar_t *p, Int32)) { RINOK(job.check()) return path(p); }
 };
+
+HRESULT BindFlatFolder(Session &session, CMyComPtr<IFolderFolder> &folder, CAgentFolder *&flat) {
+  session.agent->_progress_for_Open = nullptr;
+  RINOK(session.agentOwner->BindToRootFolder(&folder))
+  CMyComPtr<IArchiveFolderInternal> internal;
+  RINOK(folder.QueryInterface(IID_IArchiveFolderInternal, &internal))
+  RINOK(internal->GetAgentFolder(&flat))
+  RINOK(static_cast<IFolderSetFlatMode *>(flat)->SetFlatMode(1))
+  return folder->LoadItems();
+}
 }
 
-uint32_t av_abi() { return 3; }
+uint32_t av_abi() { return 4; }
 void *av_job_create(AvCallback callback, void *context) {
   try { return new Job{callback, context}; } catch (...) { return nullptr; }
 }
@@ -416,15 +544,7 @@ static int32_t OpenService(const wchar_t *path, void *value, void **result, cons
     RINOK(static_cast<Job *>(value)->check())
     auto session = std::make_unique<Session>();
     // Load only our adjacent codec DLL, never registry-installed 7-Zip or plugins.
-    wchar_t module[32768];
-    DWORD len = GetModuleFileNameW(g_hInstance, module, 32768);
-    if (!len || len >= 32768) return E_FAIL;
-    std::wstring dll(module, len);
-    dll.resize(dll.find_last_of(L"\\/") + 1); dll += L"7z.dll";
-    bool loaded = false;
-    RINOK(session->codecs->LoadDll(dll.c_str(), false, &loaded))
-    if (!loaded) return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
-    session->codecs->NeedSetLibCodecs = false;
+    RINOK(LoadAdjacentCodecs(*session->codecs))
     COpenOptions options;
     CObjectVector<COpenType> types;
     CIntVector excluded;
@@ -460,6 +580,120 @@ int32_t av_open(const wchar_t *path, void *value, void **result) { return OpenSe
 int32_t av_open_memory(const uint8_t *data, uint64_t size, const wchar_t *name, void *job, void **result) {
   if (!data || !size || size > (64u << 20)) { if (result) *result = nullptr; return E_INVALIDARG; }
   return OpenService(name, job, result, data, (size_t)size);
+}
+
+int32_t av_write_formats(void *value) {
+  if (!value) return E_INVALIDARG;
+  try {
+    auto &job = *static_cast<Job *>(value);
+    Session services;
+    RINOK(LoadAdjacentCodecs(*services.codecs))
+    for (unsigned i = 0; i < services.codecs->Formats.Size(); ++i) {
+      const auto &format = services.codecs->Formats[i];
+      if (!format.UpdateEnabled || format.Flags_HashHandler()) continue;
+      const UString ext = format.GetMainExt();
+      AvEvent e{}; e.kind = 11; e.path1 = format.Name; e.path2 = ext;
+      e.flags = (format.Flags_KeepName() ? 1u : 0u) | (format.Flags_SymLinks() ? 2u : 0u)
+        | (format.Flags_HardLinks() ? 4u : 0u) | (format.Flags_AltStreams() ? 8u : 0u)
+        | (format.Flags_NtSecurity() ? 16u : 0u) | (format.Flags_CTime() ? 32u : 0u)
+        | (format.Flags_MTime() ? 64u : 0u) | (format.Flags_ATime() ? 128u : 0u);
+      RINOK(job.emit(e))
+    }
+    return job.check();
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
+}
+
+int32_t av_write_archive(void *value, const AvWriteOptions *request,
+  const wchar_t * const *paths, uint32_t count, const wchar_t * const *propertyNames,
+  const wchar_t * const *propertyValues, const uint64_t *volumeSizes) {
+  if (!value || !request || !request->format || !request->output || !*request->output ||
+      !paths || !count || request->action > 3 || request->pathMode > 2 ||
+      (request->numProperties && (!propertyNames || !propertyValues)) ||
+      (request->numVolumes && (!volumeSizes || request->source))) return E_INVALIDARG;
+  auto &job = *static_cast<Job *>(value);
+  try {
+    RINOK(job.check())
+    Session services;
+    RINOK(LoadAdjacentCodecs(*services.codecs))
+    const int index = services.codecs->FindFormatForArchiveType(request->format);
+    if (index < 0) return E_NOTIMPL;
+    const auto &format = services.codecs->Formats[(unsigned)index];
+    if (!format.UpdateEnabled || format.Flags_HashHandler()) return E_NOTIMPL;
+    if (request->sfxModule && !format.Is_7z()) return E_INVALIDARG;
+    if (format.Flags_KeepName()) {
+      if (count != 1 || !paths[0]) return E_INVALIDARG;
+      NWindows::NFile::NFind::CFileInfo info;
+      if (!info.Find_FollowLink(paths[0]) || info.IsDir()) return E_INVALIDARG;
+    }
+    CObjectVector<COpenType> types;
+    COpenType type;
+    type.FormatIndex = index;
+    types.Add(type);
+    CUpdateOptions options;
+    options.UpdateArchiveItself = false;
+    options.ArcNameMode = k_ArcNameMode_Exact;
+    options.PathMode = static_cast<NWildcard::ECensorPathMode>(request->pathMode);
+    options.OpenShareForWrite = (request->flags & 1) != 0;
+    options.SymLinks.Val = (request->flags & 2) != 0;
+    options.HardLinks.Val = (request->flags & 4) != 0;
+    options.AltStreams.Val = (request->flags & 8) != 0;
+    options.NtSecurity.Val = (request->flags & 16) != 0;
+    options.SetArcMTime = (request->flags & 32) != 0;
+    options.DeleteAfterCompressing = (request->flags & 64) != 0;
+    if (options.DeleteAfterCompressing && (request->source || request->action != 0 ||
+        options.OpenShareForWrite)) return E_INVALIDARG;
+    if (request->sfxModule) {
+      options.SfxMode = true;
+      options.SfxModule = request->sfxModule;
+    }
+    const NUpdateArchive::CActionSet *actions[] = { &NUpdateArchive::k_ActionSet_Add,
+      &NUpdateArchive::k_ActionSet_Update, &NUpdateArchive::k_ActionSet_Fresh, &NUpdateArchive::k_ActionSet_Sync };
+    CUpdateArchiveCommand command;
+    command.UserArchivePath = request->output;
+    command.ActionSet = *actions[request->action];
+    options.Commands.Add(command);
+    for (uint32_t i = 0; i < request->numProperties; ++i) {
+      if (!propertyNames[i] || !*propertyNames[i] || !propertyValues[i]) return E_INVALIDARG;
+      CProperty property;
+      property.Name = propertyNames[i];
+      property.Value = propertyValues[i];
+      options.MethodMode.Properties.Add(property);
+    }
+    for (uint32_t i = 0; i < request->numVolumes; ++i) {
+      if (!volumeSizes[i]) return E_INVALIDARG;
+      options.VolumesSizes.Add(volumeSizes[i]);
+    }
+    NWildcard::CCensor censor;
+    UStringVector removablePaths;
+    for (uint32_t i = 0; i < count; ++i) {
+      if (!paths[i] || !*paths[i]) return E_INVALIDARG;
+      if (options.DeleteAfterCompressing) {
+        NWindows::NFile::NFind::CFileInfo info;
+        if (!info.Find(paths[i], false) || info.IsDir() || (info.Attrib & FILE_ATTRIBUTE_REPARSE_POINT))
+          return E_INVALIDARG;
+        removablePaths.Add(paths[i]);
+      }
+      censor.AddPreItem_NoWildcard(paths[i]);
+    }
+    WriteCallback callback(job, request->password, removablePaths);
+    CUpdateErrorInfo error;
+    const HRESULT h = UpdateArchive(services.codecs, types, request->source ? request->source : L"",
+      censor, options, error, &callback, &callback, true);
+    if (h != S_OK && h != E_ABORT && error.ThereIsError()) {
+      UString message;
+      message = error.Message;
+      for (unsigned i = 0; i < error.FileNames.Size(); ++i) {
+        if (!message.IsEmpty()) message.Add_LF();
+        message += error.FileNames[i];
+      }
+      AvEvent e{}; e.kind = 5; e.path1 = message;
+      RINOK(job.emit(e))
+    }
+    return h;
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; }
+    catch (const wchar_t *message) { AvEvent e{}; e.kind = 5; e.path1 = message; job.emit(e); return E_FAIL; }
+    catch (const char *message) { UString s; s = message; AvEvent e{}; e.kind = 5; e.path1 = s; job.emit(e); return E_FAIL; }
+    catch (...) { return E_FAIL; }
 }
 
 int32_t av_list(void *sessionValue, void *jobValue) {
@@ -540,8 +774,10 @@ int32_t av_property(void *sessionValue, void *jobValue, uint32_t property) {
 }
 
 int32_t av_extract(void *sessionValue, void *jobValue, const uint32_t *indices,
-  uint32_t count, const wchar_t *destination, int test) {
-  if (!sessionValue || !jobValue || !indices || !count || (!test && (!destination || !*destination))) return E_INVALIDARG;
+  uint32_t count, const wchar_t *destination, int test, uint32_t pathMode,
+  uint32_t overwriteMode, uint32_t flags, const wchar_t *relativePrefix) {
+  if (!sessionValue || !jobValue || !indices || !count || (!test && (!destination || !*destination)) ||
+      pathMode > NExtract::NPathMode::kAbsPaths || overwriteMode > NExtract::NOverwriteMode::kRenameExisting) return E_INVALIDARG;
   try {
     auto &session = *static_cast<Session *>(sessionValue);
     auto &job = *static_cast<Job *>(jobValue);
@@ -562,11 +798,16 @@ int32_t av_extract(void *sessionValue, void *jobValue, const uint32_t *indices,
     CMyComPtr<IFolderArchiveExtractCallback> ui = uiSpec;
     auto *ecs = new CArchiveExtractCallback;
     CMyComPtr<IArchiveExtractCallback> callback = ecs;
-    ecs->InitForMulti(false, NExtract::NPathMode::kFullPaths, NExtract::NOverwriteMode::kAsk,
+    ecs->InitForMulti(false, static_cast<NExtract::NPathMode::EEnum>(pathMode),
+      static_cast<NExtract::NOverwriteMode::EEnum>(overwriteMode),
       NExtract::NZoneIdMode::kNone, true);
     ecs->InitBeforeNewArchive();
     CExtractNtOptions options;
+    options.NtSecurity.Val = (flags & 1) != 0;
+    options.AltStreams.Val = (flags & 2) != 0;
     UStringVector removeParts;
+    if (pathMode == NExtract::NPathMode::kCurPaths && relativePrefix && *relativePrefix)
+      SplitPathToParts(UString(relativePrefix), removeParts);
     ecs->Init(options, nullptr, session.link.GetArc(), ui, false, test != 0, dest,
       removeParts, false, (UInt64)(Int64)-1);
     CArchiveExtractCallback_Closer closer(ecs);
@@ -668,14 +909,8 @@ int32_t av_replace_item(void *sessionValue, void *jobValue, uint32_t index,
     auto &agent = *session.agent;
     if (!agent.CanUpdate() || agent.IsThere_ReadOnlyArc()) return E_NOTIMPL;
     CMyComPtr<IFolderFolder> folder;
-    agent._progress_for_Open = nullptr;
-    RINOK(session.agentOwner->BindToRootFolder(&folder))
-    CMyComPtr<IArchiveFolderInternal> internal;
-    RINOK(folder.QueryInterface(IID_IArchiveFolderInternal, &internal))
     CAgentFolder *flat = nullptr;
-    RINOK(internal->GetAgentFolder(&flat))
-    RINOK(static_cast<IFolderSetFlatMode *>(flat)->SetFlatMode(1))
-    RINOK(folder->LoadItems())
+    RINOK(BindFlatFolder(session, folder, flat))
     UInt32 n = 0; RINOK(folder->GetNumberOfItems(&n))
     UInt32 mapped = n;
     for (UInt32 i = 0; i < n; ++i) {
@@ -699,4 +934,52 @@ int32_t av_replace_item(void *sessionValue, void *jobValue, uint32_t index,
     return h == S_OK ? closed : h;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; }
     catch (...) { return E_FAIL; }
+}
+
+int32_t av_can_delete_items(void *sessionValue) {
+  if (!sessionValue) return 0;
+  const auto &session = *static_cast<Session *>(sessionValue);
+  auto &agent = *session.agent;
+  return !session.virtualInput && agent.CanUpdate() && !agent.IsThere_ReadOnlyArc() &&
+    session.link.Arcs.Size() == 1 && session.link.VolumePaths.Size() <= 1 &&
+    agent.GetArc().ArcStreamOffset == 0 && agent.GetArc().ErrorInfo.ErrorFlags == 0 &&
+    agent.GetArc().ErrorInfo.WarningFlags == 0;
+}
+
+int32_t av_delete_items(void *sessionValue, void *jobValue, const uint32_t *indices,
+  uint32_t count, const wchar_t *output) {
+  if (!sessionValue || !jobValue || !indices || !count || !output || !*output) return E_INVALIDARG;
+  if (!av_can_delete_items(sessionValue)) return E_NOTIMPL;
+  try {
+    auto &session = *static_cast<Session *>(sessionValue);
+    auto &job = *static_cast<Job *>(jobValue);
+    auto &agent = *session.agent;
+    RINOK(job.check())
+    if (!std::is_sorted(indices, indices + count) ||
+      std::adjacent_find(indices, indices + count) != indices + count) return E_INVALIDARG;
+    CMyComPtr<IFolderFolder> folder;
+    CAgentFolder *flat = nullptr;
+    RINOK(BindFlatFolder(session, folder, flat))
+    if (!agent.CanUpdate()) return E_NOTIMPL;
+    UInt32 n = 0;
+    RINOK(folder->GetNumberOfItems(&n))
+    CUIntVector selected;
+    for (UInt32 i = 0; i < n; ++i) {
+      RINOK(job.check())
+      int index = flat->GetRealIndex(i);
+      if (index >= 0 && std::binary_search(indices, indices + count, static_cast<uint32_t>(index)))
+        selected.Add(i);
+    }
+    if (selected.Size() != count) return E_INVALIDARG;
+    RINOK(agent.SetFolder(folder))
+    struct ResetFolder { CAgent &agent; ~ResetFolder() { agent.SetFolder(nullptr); } } reset{agent};
+    auto *file = new COutFileStream;
+    CMyComPtr<IOutStream> stream = file;
+    if (!file->Create_NEW(output)) return HRESULT_FROM_WIN32(GetLastError());
+    auto *spec = new UpdateCallback(job, session.link.PasswordWasAsked);
+    CMyComPtr<IFolderArchiveUpdateCallback> callback = spec;
+    const HRESULT h = agent.DeleteItems(stream, selected.ConstData(), selected.Size(), callback);
+    const HRESULT closed = file->Close();
+    return h == S_OK ? closed : h;
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
 }

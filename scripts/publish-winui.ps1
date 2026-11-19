@@ -45,7 +45,7 @@ try {
             foreach ($notice in $notices) { Copy-Item -LiteralPath $notice.FullName -Destination $destination -Force }
         }
     }
-    foreach ($file in 'Arkvello.exe','Arkvello.dll','Arkvello.Native.dll','7z.dll','coreclr.dll','hostfxr.dll','Microsoft.UI.Xaml.dll','Arkvello.pri','App.xbf','MainWindow.xbf','Assets/Fluent/Icons.xbf','License.txt','Licenses/DotNET/THIRD-PARTY-NOTICES.TXT') {
+    foreach ($file in 'Arkvello.exe','Arkvello.dll','Arkvello.Native.dll','7z.dll','7z.sfx','coreclr.dll','hostfxr.dll','Microsoft.UI.Xaml.dll','Arkvello.pri','App.xbf','MainWindow.xbf','Assets/Fluent/Icons.xbf','License.txt','Licenses/DotNET/THIRD-PARTY-NOTICES.TXT') {
         if (!(Test-Path -LiteralPath (Join-Path $output $file))) { throw "Portable payload incomplete: $file" }
     }
     $manifestPath = Join-Path $output 'payload-manifest.json'

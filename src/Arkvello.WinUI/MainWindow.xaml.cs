@@ -538,7 +538,6 @@ public sealed partial class MainWindow : Window
     private void UpdateStatus()
     {
         foreach (var pane in panels) UpdatePanelStatus(pane);
-        ExtractButton.IsEnabled = TestButton.IsEnabled = !busy && archive != null;
         MarkModeMenu.IsChecked = markMode;
         UpdateTimeMenu();
         UpdateFileCommands();
@@ -637,8 +636,8 @@ public sealed partial class MainWindow : Window
         var loadedProperties = new Dictionary<uint, IReadOnlyDictionary<uint, ArchiveProperty>>();
         var result = await RunOperation("Открытие архива", job =>
         {
-            var opened = ArchiveSession.Open(path, job, captureSource);
-            candidate = opened.Session;
+            var opened = job.OpenWithPasswordRetry(() => ArchiveSession.Open(path, job, captureSource));
+            candidate = opened.Value;
             return candidate != null && opened.Result.Succeeded ? LoadSessionColumns(candidate, selectedProperties, job, loadedProperties) : opened.Result;
         }, showSuccess: false, quietNotArchive: quietNotArchive, delayProgress: true);
         if (!closing && result?.HResult == 0 && candidate != null)
@@ -678,8 +677,8 @@ public sealed partial class MainWindow : Window
         var loadedProperties = new Dictionary<uint, IReadOnlyDictionary<uint, ArchiveProperty>>();
         var result = await RunOperation("Открытие вложенного архива", job =>
         {
-            var opened = parent.OpenChild(index, job, parentFolder);
-            candidate = opened.Session;
+            var opened = job.OpenWithPasswordRetry(() => parent.OpenChild(index, job, parentFolder));
+            candidate = opened.Value;
             return candidate != null && opened.Result.Succeeded ? LoadSessionColumns(candidate, selectedProperties, job, loadedProperties) : opened.Result;
         }, showSuccess: false, quietNotArchive: true, delayProgress: true);
         if (!closing && result?.HResult == 0 && candidate != null)
@@ -784,47 +783,23 @@ public sealed partial class MainWindow : Window
         else if (directory.Length > 0 && Directory.GetParent(directory) is { } folderParent) await Navigate(folderParent.FullName);
     }
 
-    private async Task Extract(bool test, IEnumerable<FileEntry>? explicitItems = null)
-    {
-        if (busy || configuring || archive == null) return;
-        var items = (explicitItems ?? list.SelectedItems.Cast<FileEntry>()).ToArray();
-        // Original behavior: no marked items means the current visible folder.
-        if (items.Length == 0) items = entries.ToArray();
-        uint[] indices = items.SelectMany(e => e.DescendantIndices ?? (e.ArchiveIndex is { } index ? [index] : Array.Empty<uint>())).Distinct().Order().ToArray();
-        if (indices.Length == 0) { ShowError("В этой папке нет элементов для операции."); return; }
-        string destination = "";
-        if (!test)
-        {
-            string rootPath = archiveSession!.RootPath;
-            string suggestedDestination = OtherFilesystemDirectory.Length > 0 ? OtherFilesystemDirectory :
-                Path.Combine(Path.GetDirectoryName(rootPath)!, Path.GetFileNameWithoutExtension(rootPath));
-            var field = new TextBox { Text = suggestedDestination };
-            AutomationProperties.SetName(field, "Папка назначения");
-            var browse = new Button { Content = "Обзор…" };
-            browse.Click += async (_, _) => { var picker = new FolderPicker(); picker.FileTypeFilter.Add("*"); WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this)); var folder = await picker.PickSingleFolderAsync(); if (folder != null) field.Text = folder.Path; };
-            var content = new StackPanel { Spacing = 12 }; content.Children.Add(new TextBlock { Text = "Извлечь в папку" }); content.Children.Add(field); content.Children.Add(DestinationActions(browse, field, extractDestinations)); content.Children.Add(new TextBlock { Text = $"Выбрано файлов и папок в архиве: {indices.Length:N0}.\nПолные пути. При совпадении имён — запрос.", TextWrapping = TextWrapping.Wrap });
-            var dialog = NewDialog("Извлечение", content, "Извлечь", "Отмена");
-            dialog.Opened += (_, _) => { field.Focus(FocusState.Programmatic); field.SelectAll(); };
-            configuring = true;
-            ContentDialogResult answer;
-            try { answer = await dialog.ShowAsync(); }
-            finally { configuring = false; }
-            if (closing || answer != ContentDialogResult.Primary) return;
-            if (!Path.IsPathFullyQualified(field.Text)) { ShowError("Укажите абсолютный путь к папке назначения."); return; }
-            destination = Path.GetFullPath(field.Text);
-        }
-        var target = archive;
-        var result = await RunOperation(test ? "Проверка архива" : "Извлечение", job => target.Extract(indices, destination, job, test));
-        if (!test && result?.Succeeded == true) RememberPath(extractDestinations, destination);
-        if (!test && !closing && OtherFilesystemDirectory.Length > 0)
-            await NavigateDirectory(OtherPanel, OtherFilesystemDirectory, remember: false, refresh: true);
-    }
-
-    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true, bool quietNotArchive = false, bool showResult = true, bool shellProgress = false, bool delayProgress = false)
+    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true, bool quietNotArchive = false, bool showResult = true, bool shellProgress = false, bool delayProgress = false, string? cancellationMessage = null, string? initialPassword = null)
     {
         if (busy) return null;
         ArchiveJob? created = null;
-        try { created = new ArchiveJob(HandleEvent); created.SetMemoryLimit(MemoryPreference.Load()); }
+        try
+        {
+            created = new ArchiveJob(e =>
+            {
+                if (e.Kind == ArchiveEventKind.Password)
+                {
+                    if ((e.Flags & ArchiveJob.RetryPassword) != 0) initialPassword = null;
+                    if (initialPassword != null) return new(0, initialPassword);
+                }
+                return HandleEvent(e);
+            });
+            created.SetMemoryLimit(MemoryPreference.Load());
+        }
         catch (Exception error) { created?.Dispose(); ShowError(error.Message); return null; }
         using var job = created;
         busy = true; operationCancelled = false; UpdateStatus(); Notice.IsOpen = false;
@@ -895,7 +870,7 @@ public sealed partial class MainWindow : Window
         {
             string heading = result.Cancelled ? "Операция отменена" : result.Succeeded ? "Операция завершена" : result.HResult == 0 ? "Завершено с ошибками" : "Не удалось завершить операцию";
             var lines = new List<string>();
-            if (result.Cancelled) lines.Add(shellProgress ? "Часть элементов уже могла быть удалена. Проверьте исходную папку и корзину." : "Уже созданные файлы и частично записанные данные могут остаться в папке назначения. Перемещённые элементы могли покинуть исходную папку.");
+            if (result.Cancelled) lines.Add(cancellationMessage ?? (shellProgress ? "Часть элементов уже могла быть удалена. Проверьте исходную папку и корзину." : "Уже созданные файлы и частично записанные данные могут остаться в папке назначения. Перемещённые элементы могли покинуть исходную папку."));
             else if (result.Succeeded) lines.Add("Ошибок не обнаружено.");
             else if (result.HResult != 0) lines.Add($"Код: 0x{result.HResult:X8}. Проверьте пути, доступ и сообщения операции перед повтором.");
             foreach (var issue in result.Issues) lines.Add(IssueText(issue));
@@ -955,9 +930,13 @@ public sealed partial class MainWindow : Window
         PromptReply response = new(-1);
         if (e.Kind == ArchiveEventKind.Password)
         {
-            var password = new PasswordBox { MinWidth = 380, PasswordRevealMode = PasswordRevealMode.Peek };
+            var password = new PasswordBox { MinWidth = 380, MaxLength = 4095, PasswordRevealMode = PasswordRevealMode.Peek };
             AutomationProperties.SetName(password, "Пароль архива");
-            var content = new StackPanel { Spacing = 12 }; content.Children.Add(new TextBlock { Text = "Введите пароль архива.", TextWrapping = TextWrapping.Wrap }); content.Children.Add(password);
+            var content = new StackPanel { Spacing = 12 };
+            content.Children.Add(new TextBlock { Text = (e.Flags & ArchiveJob.RetryPassword) != 0
+                ? "Не удалось открыть зашифрованный архив. Проверьте пароль и повторите." : "Введите пароль архива.",
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 460 });
+            content.Children.Add(password);
             promptDialog = NewDialog("Пароль", content, "Продолжить", "Отмена");
             promptDialog.Opened += (_, _) => password.Focus(FocusState.Programmatic);
             if (await promptDialog.ShowAsync() == ContentDialogResult.Primary) response = new(0, password.Password);
@@ -1000,7 +979,9 @@ public sealed partial class MainWindow : Window
     }
 
     private static string FormatTime(ulong time, bool defined) => defined ? "   ·   " + DateTime.FromFileTimeUtc(checked((long)time)).ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss") : "";
-    private static string IssueText(ArchiveEvent e) => e.Path1.Length > 0 && e.Code == 0 && (e.Flags & 0x10000) == 0 ? e.Path1 : (e.Path1.Length > 0 ? e.Path1 + ": " : "") + (e.Code switch
+    private static string IssueText(ArchiveEvent e) => (e.Flags & 0x20000) != 0
+        ? e.Path1 + ": " + new System.ComponentModel.Win32Exception((int)e.Code).Message
+        : e.Path1.Length > 0 && e.Code == 0 && (e.Flags & 0x10000) == 0 ? e.Path1 : (e.Path1.Length > 0 ? e.Path1 + ": " : "") + (e.Code switch
     {
         1 => "Метод сжатия не поддерживается.", 2 => "Ошибка данных.", 3 => "Ошибка CRC: данные повреждены или указан неверный пароль.",
         4 => "Данные недоступны.", 5 => "Неожиданный конец данных.", 6 => "Данные после конца архива.", 7 => "Файл не является архивом.",
@@ -1116,7 +1097,7 @@ public sealed partial class MainWindow : Window
         Close();
     }
     private void OnExit(object sender, RoutedEventArgs e) => RequestClose();
-    private async void OnAbout(object sender, RoutedEventArgs e) => await NewDialog("Arkvello", new TextBlock { Text = "Технический срез C# + WinUI 3 / C++.\nПросмотр папок и архивов, извлечение, проверка и интерактивные запросы.\nОстальные команды и полный набор параметров будут перенесены на следующих этапах.\nОсновано на 7-Zip 26.06. Лицензии находятся рядом с программой.", TextWrapping = TextWrapping.Wrap, MaxWidth = 480 }, close: "Закрыть").ShowAsync();
+    private async void OnAbout(object sender, RoutedEventArgs e) => await NewDialog("Arkvello", new TextBlock { Text = "Файловый менеджер и архиватор для Windows.\nСборка в разработке.\nОсновано на 7-Zip 26.06. Лицензии находятся рядом с программой.", TextWrapping = TextWrapping.Wrap, MaxWidth = 480 }, close: "Закрыть").ShowAsync();
     private async void OnRootKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (suppressRenameKeyRelease && e.Key is VirtualKey.Enter or VirtualKey.Escape) { e.Handled = true; return; }

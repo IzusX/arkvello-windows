@@ -3,7 +3,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Arkvello.Services;
 
-public enum ArchiveEventKind : uint { Item = 1, Progress, Password, Overwrite, Issue, CurrentPath, Paused, Memory, Column, Property }
+public enum ArchiveEventKind : uint { Item = 1, Progress, Password, Overwrite, Issue, CurrentPath, Paused, Memory, Column, Property, WriteFormat, PublishBeforeDeleting }
 public sealed record ArchiveColumn(uint Id, uint Type, string Name);
 public sealed record ArchiveProperty(uint Type, string Text, ulong Raw)
 {
@@ -26,19 +26,28 @@ public sealed record ArchiveResult(int HResult, IReadOnlyList<ArchiveEvent> Issu
     public bool Cancelled => HResult == unchecked((int)0x80004004);
     public bool Succeeded => HResult == 0 && Issues.Count == 0;
 }
+public enum ArchiveExtractPath : uint { Full, Current, Flat, Absolute }
+public enum ArchiveOverwrite : uint { Ask, Replace, Skip, RenameIncoming, RenameExisting }
+public sealed record ArchiveExtractSettings(ArchiveExtractPath PathMode = ArchiveExtractPath.Full,
+    ArchiveOverwrite Overwrite = ArchiveOverwrite.Ask, bool Permissions = false, bool Streams = true,
+    string RelativePrefix = "");
 
 // The delegate and callback state live as long as the job. Callbacks are
 // synchronous on native workers and may not throw across the C ABI.
 public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
 {
+    internal const uint RetryPassword = 1u << 31;
     private readonly NativeApi.Callback callback;
     private readonly Func<ArchiveEvent, PromptReply> handler;
     private readonly List<ArchiveEvent> issues = [];
     private readonly List<ArchiveEntry> items = [];
     private readonly Dictionary<uint, ArchiveProperty> properties = [];
+    private int passwordRequests;
+    private bool retryPassword;
     internal IReadOnlyDictionary<uint, ArchiveProperty> Properties => new Dictionary<uint, ArchiveProperty>(properties);
     internal void ResetProperties() => properties.Clear();
     public Exception? CallbackError { get; private set; }
+    internal Func<bool>? PublishBeforeDeleting { get; set; }
     private int cancellationRequested;
     public bool CancellationRequested => Volatile.Read(ref cancellationRequested) != 0;
     public void ThrowIfCancellationRequested()
@@ -49,11 +58,33 @@ public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
         Marshal.ThrowExceptionForHR(result);
     }
     public IReadOnlyList<ArchiveEvent> Issues { get { lock (issues) return issues.ToArray(); } }
+    internal void ReportIssue(uint code, string text)
+    {
+        lock (issues) issues.Add(new(ArchiveEventKind.Issue, code, 0, 0, 0, 0, 0, 0, 0, 0, text, ""));
+    }
+    internal (T? Value, ArchiveResult Result) OpenWithPasswordRetry<T>(Func<(T? Value, ArchiveResult Result)> open)
+        where T : class
+    {
+        int previousIssues = Issues.Count;
+        try
+        {
+            while (true)
+            {
+                int previousRequests = passwordRequests;
+                var opened = open();
+                if (opened.Value != null || opened.Result.Cancelled || passwordRequests == previousRequests ||
+                    opened.Result.HResult is not (1 or unchecked((int)0x80004005))) return opened;
+                lock (issues) issues.RemoveRange(previousIssues, issues.Count - previousIssues);
+                retryPassword = true;
+            }
+        }
+        finally { retryPassword = false; }
+    }
     internal IReadOnlyList<ArchiveEntry> Items => items.ToArray();
     internal void ResetItems() => items.Clear();
     public ArchiveJob(Func<ArchiveEvent, PromptReply> handler) : base(true)
     {
-        if (NativeApi.av_abi() != 3) throw new InvalidOperationException("Версия Arkvello.Native.dll не соответствует приложению. Восстановите полную сборку Arkvello.");
+        if (NativeApi.av_abi() != 4) throw new InvalidOperationException("Версия Arkvello.Native.dll не соответствует приложению. Восстановите полную сборку Arkvello.");
         this.handler = handler;
         callback = OnEvent;
         SetHandle(NativeApi.av_job_create(callback, IntPtr.Zero));
@@ -66,11 +97,21 @@ public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
             var e = new ArchiveEvent((ArchiveEventKind)value.Kind, value.Code, value.Index, value.Flags,
                 value.Completed, value.Total, value.Size1, value.Size2, value.Time1, value.Time2,
                 Marshal.PtrToStringUni(value.Path1) ?? "", Marshal.PtrToStringUni(value.Path2) ?? "");
+            if (e.Kind == ArchiveEventKind.Password)
+            {
+                passwordRequests++;
+                if (retryPassword)
+                {
+                    e = e with { Flags = e.Flags | RetryPassword };
+                    retryPassword = false;
+                }
+            }
             if (e.Kind == ArchiveEventKind.Issue) lock (issues) issues.Add(e);
             if (e.Kind == ArchiveEventKind.Property) properties[e.Index] = new(e.Flags, e.Path1, e.Size1);
             if (e.Kind == ArchiveEventKind.Item)
                 items.Add(new(e.Index, e.Path1, (e.Flags & 1) != 0, (e.Flags & 2) != 0 ? e.Size1 : null, e.Size2,
                     (e.Flags & 4) != 0 ? DateTime.FromFileTimeUtc(checked((long)e.Time1)) : null));
+            if (e.Kind == ArchiveEventKind.PublishBeforeDeleting) return PublishBeforeDeleting?.Invoke() == true ? 1 : 0;
             var response = handler(e);
             if (e.Kind == ArchiveEventKind.Password && response.Value >= 0)
             {
@@ -98,7 +139,7 @@ public sealed class NativeArchive : SafeHandleZeroOrMinusOneIsInvalid
     private NativeArchive(IntPtr value) : base(true) => SetHandle(value);
     public static (NativeArchive? Archive, ArchiveResult Result) Open(string path, ArchiveJob job)
     {
-        if (NativeApi.av_abi() != 3) throw new InvalidOperationException("Unsupported Arkvello native ABI.");
+        if (NativeApi.av_abi() != 4) throw new InvalidOperationException("Unsupported Arkvello native ABI.");
         int result = NativeApi.av_open(path, job, out var value);
         return (result == 0 ? new NativeArchive(value) : null, new(result, job.Issues));
     }
@@ -117,17 +158,24 @@ public sealed class NativeArchive : SafeHandleZeroOrMinusOneIsInvalid
         if (result != 0) throw new COMException("Cannot list archive.", result);
         return job.Items;
     }
-    public ArchiveResult Extract(IEnumerable<uint> indices, string destination, ArchiveJob job, bool test = false)
+    public ArchiveResult Extract(IEnumerable<uint> indices, string destination, ArchiveJob job, bool test = false,
+        ArchiveExtractSettings? settings = null)
     {
         uint[] selected = indices.Distinct().Order().ToArray();
         if (selected.Length == 0) throw new ArgumentException("An explicit item selection is required.", nameof(indices));
-        int result = NativeApi.av_extract(this, job, selected, (uint)selected.Length, destination, test ? 1 : 0);
+        settings ??= new();
+        uint flags = (settings.Permissions ? 1u : 0) | (settings.Streams ? 2u : 0);
+        int result = NativeApi.av_extract(this, job, selected, (uint)selected.Length, destination, test ? 1 : 0,
+            (uint)settings.PathMode, (uint)settings.Overwrite, flags, settings.RelativePrefix);
         return new(result, job.Issues);
     }
     public ArchiveResult ExportItem(uint index, string output, ArchiveJob job) =>
         new(NativeApi.av_export_item(this, job, index, output), job.Issues);
     public ArchiveResult ReplaceItem(uint index, string replacement, string output, ArchiveJob job) =>
         new(NativeApi.av_replace_item(this, job, index, replacement, output), job.Issues);
+    internal bool CanDeleteItems => NativeApi.av_can_delete_items(this) != 0;
+    internal ArchiveResult DeleteItems(uint[] indices, string output, ArchiveJob job) =>
+        new(NativeApi.av_delete_items(this, job, indices, (uint)indices.Length, output), job.Issues);
     public IReadOnlyList<ArchiveColumn> ReadColumns()
     {
         var columns = new List<ArchiveColumn>();
@@ -158,6 +206,15 @@ internal static class NativeApi
     }
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int Callback(IntPtr context, in Event value, IntPtr reply, uint capacity);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct WriteOptions
+    {
+        internal string Format;
+        internal string? Source;
+        internal string Output;
+        internal string? Password, SfxModule;
+        internal uint NumProperties, NumVolumes, Action, PathMode, Flags;
+    }
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern uint av_abi();
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr av_job_create(Callback callback, IntPtr context);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern void av_job_close(IntPtr job);
@@ -174,11 +231,23 @@ internal static class NativeApi
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int av_columns(NativeArchive session, ArchiveJob job);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int av_property(NativeArchive session, ArchiveJob job, uint property);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
-    internal static extern int av_extract(NativeArchive session, ArchiveJob job, uint[] indices, uint count, string destination, int test);
+    internal static extern int av_extract(NativeArchive session, ArchiveJob job, uint[] indices, uint count, string destination, int test,
+        uint pathMode, uint overwriteMode, uint flags, string relativePrefix);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     internal static extern int av_export_item(NativeArchive session, ArchiveJob job, uint index, string output);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     internal static extern int av_replace_item(NativeArchive session, ArchiveJob job, uint index, string replacement, string output);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int av_can_delete_items(NativeArchive session);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern int av_delete_items(NativeArchive session, ArchiveJob job, uint[] indices, uint count, string output);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int av_write_formats(ArchiveJob job);
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern int av_write_archive(ArchiveJob job, in WriteOptions options,
+        [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr)] string[] paths, uint count,
+        [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr)] string[] names,
+        [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr)] string[] values, ulong[] volumes);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     internal static extern int av_fs_transfer(ArchiveJob job, [MarshalAs(UnmanagedType.LPArray, ArraySubType = UnmanagedType.LPWStr)] string[] paths, uint count, string destination, int move);
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]

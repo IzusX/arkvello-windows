@@ -29,6 +29,7 @@ CPP/7zip/Common/FileStreams.cpp
 CPP/7zip/Common/FilterCoder.cpp
 CPP/7zip/Common/LimitedStreams.cpp
 CPP/7zip/Common/MethodProps.cpp
+CPP/7zip/Common/MultiOutStream.cpp
 CPP/7zip/Common/ProgressUtils.cpp
 CPP/7zip/Common/PropId.cpp
 CPP/7zip/Common/StreamObjects.cpp
@@ -53,6 +54,8 @@ CPP/7zip/UI/Common/OpenArchive.cpp
 CPP/7zip/UI/Common/PropIDUtils.cpp
 CPP/7zip/UI/Common/SetProperties.cpp
 CPP/7zip/UI/Common/SortUtils.cpp
+CPP/7zip/UI/Common/TempFiles.cpp
+CPP/7zip/UI/Common/Update.cpp
 CPP/7zip/UI/Common/UpdateAction.cpp
 CPP/7zip/UI/Common/UpdateCallback.cpp
 CPP/7zip/UI/Common/UpdatePair.cpp

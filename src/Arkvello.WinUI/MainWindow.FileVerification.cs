@@ -2,6 +2,9 @@ using System.Text.Json;
 using Arkvello.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.ApplicationModel.DataTransfer;
@@ -41,7 +44,7 @@ public sealed partial class MainWindow
             string occupied = FileSystemOperations.Create(fixture, "occupied.txt", false);
             File.WriteAllText(occupied, "untouched");
             await Navigate(fixture, false); await FocusItem(original);
-            Record("filesystem commands enabled in directory", CopyToButton.IsEnabled && MoveToButton.IsEnabled && DeleteButton.IsEnabled && RenameMenu.IsEnabled && !ExtractButton.IsEnabled);
+            Record("filesystem commands enabled in directory", CopyToButton.IsEnabled && MoveToButton.IsEnabled && DeleteButton.IsEnabled && RenameMenu.IsEnabled && AddToArchiveButton.IsEnabled && ExtractButton.IsEnabled);
             BeginRename();
             var item = CurrentItem()!;
             Record("inline editor contains the real name and selects its stem", renameBox != null && renameBox.Text == item.Name && renameBox.SelectedText == Path.GetFileNameWithoutExtension(item.Name));
@@ -109,6 +112,7 @@ public sealed partial class MainWindow
             await VerifyPanels(output, fixture, renamedPath, target, Record);
             await VerifyFileNavigationAndSelection(fixture, Record);
             await VerifyShellDrop(fixture, target, Record);
+            await VerifyArchiveCommands(fixture, Record);
             await VerifyCloseDuringTransfer(fixture, Record);
         }
         catch (Exception error) { results.Add(new { name = "unexpected failure", passed = false, error = error.ToString() }); Environment.ExitCode = 1; }
@@ -117,6 +121,81 @@ public sealed partial class MainWindow
             File.WriteAllText(Path.Combine(output, "client-checks.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
             if (!closing) RequestClose();
         }
+    }
+
+    private async Task VerifyArchiveCommands(string fixture, Action<string, bool> record)
+    {
+        static IEnumerable<T> FindControls<T>(DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); ++i)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T match) yield return match;
+                foreach (var descendant in FindControls<T>(child)) yield return descendant;
+            }
+        }
+        static void Invoke(Button button)
+        {
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(button);
+            ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+        }
+        static void InvokeDialogButton(ContentDialog dialog, string text) =>
+            Invoke(FindControls<Button>(dialog).Single(button => Equals(button.Content, text)));
+        async Task<ContentDialog> WaitForDialog(string title)
+        {
+            for (int i = 0; i < 160; ++i)
+            {
+                if (currentDialog is { } dialog && Equals(dialog.Title, title) && dialog.ActualHeight > 0)
+                {
+                    await Task.Delay(200);
+                    return dialog;
+                }
+                await Task.Delay(25);
+            }
+            throw new InvalidOperationException("Expected dialog was not shown: " + title + ". " + Notice.Message);
+        }
+        async Task WaitUntilReady()
+        {
+            for (int i = 0; (busy || configuring || currentDialog != null) && i < 160; ++i) await Task.Delay(25);
+        }
+        string folder = Directory.CreateDirectory(Path.Combine(fixture, "archive-commands")).FullName;
+        string input = Path.Combine(folder, "файл Ω.txt");
+        File.WriteAllText(input, "stage 5 file bytes");
+        await Navigate(folder, false);
+        list.SelectedItem = entries.Single(e => e.FullPath == input);
+        UpdateStatus();
+        Invoke(AddToArchiveButton);
+        var add = await WaitForDialog("Добавить в архив");
+        var format = FindControls<ComboBox>(add).Single(c => Equals(c.Header, "Формат"));
+        format.SelectedItem = format.Items.Cast<ArchiveWriteFormat>().Single(f => f.Name.Equals("zip", StringComparison.OrdinalIgnoreCase));
+        string zip = Path.ChangeExtension(input, ".zip");
+        record("Add dialog changes archive extension with the selected format",
+            FindControls<TextBox>(add).Single(c => Equals(c.Header, "Путь к архиву")).Text == zip);
+        InvokeDialogButton(add, "Сжать");
+        InvokeDialogButton(await WaitForDialog("Операция завершена"), "Закрыть");
+        await WaitUntilReady();
+        record("Add toolbar command creates ZIP and updates the file list", File.Exists(zip) && entries.Any(e => e.FullPath == zip));
+
+        list.SelectedItem = entries.Single(e => e.FullPath == zip);
+        UpdateStatus();
+        Invoke(ExtractButton);
+        var extract = await WaitForDialog("Извлечение");
+        string output = Path.Combine(folder, "extracted");
+        FindControls<TextBox>(extract).Single(c => Equals(c.Header, "Папка назначения")).Text = output;
+        InvokeDialogButton(extract, "Извлечь");
+        InvokeDialogButton(await WaitForDialog("Операция завершена"), "Закрыть");
+        await WaitUntilReady();
+        record("Extract toolbar command unpacks a selected archive from filesystem",
+            File.ReadAllText(Path.Combine(output, Path.GetFileName(input))) == File.ReadAllText(input));
+
+        await OpenArchive(zip, false);
+        list.SelectedItem = entries.Single(e => e.Name == Path.GetFileName(input));
+        UpdateStatus();
+        Invoke(DeleteButton);
+        InvokeDialogButton(await WaitForDialog("Удалить из архива?"), "Удалить");
+        await WaitUntilReady();
+        record("Delete toolbar command rewrites and reopens an empty archive with recovery backup",
+            archiveSession?.RootPath == zip && entries.Count == 0 && Directory.GetFiles(folder, ".arkvello-*.backup").Length == 1);
     }
 
     private async Task VerifyShellDrop(string fixture, string destination, Action<string, bool> record)

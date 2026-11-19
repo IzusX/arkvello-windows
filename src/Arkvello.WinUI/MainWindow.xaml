@@ -77,8 +77,9 @@
     <MenuBar x:Name="Menus" Background="Transparent" VerticalAlignment="Top">
       <MenuBarItem Title="Файл">
         <MenuFlyoutItem Text="Открыть архив…" Click="OnOpenArchive"/>
-        <MenuFlyoutItem Text="Извлечь…" Click="OnExtract"/>
-        <MenuFlyoutItem Text="Проверить" Click="OnTest"/>
+        <MenuFlyoutItem x:Name="AddToArchiveMenu" Text="Добавить в архив…" Click="OnAddToArchive"/>
+        <MenuFlyoutItem x:Name="ExtractMenu" Text="Извлечь…" Click="OnExtract"/>
+        <MenuFlyoutItem x:Name="TestMenu" Text="Проверить" Click="OnTest"/>
         <MenuFlyoutSeparator/>
         <MenuFlyoutItem x:Name="NewFolderMenu" Text="Создать папку…" KeyboardAcceleratorTextOverride="F7" Click="OnNewFolder"/>
         <MenuFlyoutItem x:Name="NewFileMenu" Text="Создать файл…" KeyboardAcceleratorTextOverride="Ctrl+N" Click="OnNewFile"/>
@@ -140,7 +141,7 @@
     <Grid x:Name="NavigationBand" Grid.Row="1"/>
     <Border Grid.Row="2" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
     <controls:FileCommandBar x:Name="Commands" Background="Transparent" DefaultLabelPosition="Right" IsOpen="False" IsDynamicOverflowEnabled="True" OverflowButtonVisibility="Auto" HorizontalAlignment="Stretch" Margin="16,0" VerticalAlignment="Center">
-      <AppBarButton Label="Добавить" IsEnabled="False" ToolTipService.ToolTip="Создание архивов — следующий этап"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentAdd}"/></AppBarButton.Icon></AppBarButton>
+      <AppBarButton x:Name="AddToArchiveButton" Label="Добавить" Click="OnAddToArchive" ToolTipService.ToolTip="Добавить в архив"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentAdd}"/></AppBarButton.Icon></AppBarButton>
       <AppBarButton x:Name="ExtractButton" Label="Извлечь" Click="OnExtract"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentExtract}"/></AppBarButton.Icon></AppBarButton>
       <AppBarButton x:Name="TestButton" Label="Проверить" Click="OnTest"><AppBarButton.Icon><IconSourceElement IconSource="{StaticResource FluentTest}"/></AppBarButton.Icon></AppBarButton>
       <AppBarSeparator/>

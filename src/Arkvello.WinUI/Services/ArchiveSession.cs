@@ -93,9 +93,17 @@ public sealed class ArchiveSession : IDisposable
     // new artifacts. This API deliberately cannot overwrite the root archive.
     // A later UI commit needs conflict/recovery and editor lifetime decisions.
     public (ArchiveTemporaryFile? File, ArchiveResult Result) StageReplacement(uint index,
-        string replacement, ArchiveJob job, string? temporaryRoot = null)
+        string replacement, ArchiveJob job, string? temporaryRoot = null) =>
+        StageMutation(index, replacement, null, job, temporaryRoot);
+
+    internal (ArchiveTemporaryFile? File, ArchiveResult Result) StageDeletion(uint[] indices,
+        ArchiveJob job, string? temporaryRoot = null) => StageMutation(0, "", indices, job, temporaryRoot);
+
+    private (ArchiveTemporaryFile? File, ArchiveResult Result) StageMutation(uint index,
+        string replacement, uint[]? deletion, ArchiveJob job, string? temporaryRoot)
     {
         ObjectDisposedException.ThrowIf(IsClosed, this);
+        var removed = deletion?.ToHashSet();
         ArchiveTemporaryFile? staged = null;
         try
         {
@@ -105,17 +113,23 @@ public sealed class ArchiveSession : IDisposable
                 bool transferred = false;
                 try
                 {
-                    var result = level.Archive.ReplaceItem(index, replacement, output.Path, job);
+                    bool deleting = deletion != null && level == this;
+                    var result = deleting ? level.Archive.DeleteItems(deletion!, output.Path, job)
+                        : level.Archive.ReplaceItem(index, replacement, output.Path, job);
                     if (!result.Succeeded) return (null, result);
                     // A successful writer HRESULT alone is not proof of an archive.
                     var opened = NativeArchive.Open(output.Path, job);
                     using var check = opened.Archive;
                     if (check == null || !opened.Result.Succeeded) return (null, opened.Result);
                     var names = check.ReadEntries(job);
-                    if (!names.Select(e => e.Path).SequenceEqual(level.Entries.Select(e => e.Path)))
+                    var expected = deleting ? level.Entries.Where(e => !removed!.Contains(e.Index)) : level.Entries;
+                    if (!names.Select(e => e.Path).SequenceEqual(expected.Select(e => e.Path)))
                         throw new InvalidDataException("Имена элементов изменились при обновлении архива.");
-                    result = check.Extract(names.Select(e => e.Index), "", job, test: true);
-                    if (!result.Succeeded) return (null, result);
+                    if (names.Count > 0)
+                    {
+                        result = check.Extract(names.Select(e => e.Index), "", job, test: true);
+                        if (!result.Succeeded) return (null, result);
+                    }
                     staged?.Dispose(); staged = output; transferred = true;
                     replacement = output.Path;
                     if (level.ParentIndex is { } parentIndex) index = parentIndex;

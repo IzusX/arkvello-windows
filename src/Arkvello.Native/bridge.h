@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <wchar.h>
-// ABI 3. All strings are UTF-16, borrowed only until the callback returns.
+// ABI 4. All strings are UTF-16, borrowed only until the callback returns.
 // Functions run synchronously on the caller's worker. A session is single-owner,
 // non-reentrant; cancel/pause are the only concurrent calls. Never close in use.
 struct AvEvent {
@@ -35,7 +35,8 @@ AV_API int32_t av_list(void *session, void *job);
 AV_API int32_t av_columns(void *session, void *job);
 AV_API int32_t av_property(void *session, void *job, uint32_t property);
 AV_API int32_t av_extract(void *session, void *job, const uint32_t *indices,
-  uint32_t count, const wchar_t *destination, int test);
+  uint32_t count, const wchar_t *destination, int test, uint32_t pathMode,
+  uint32_t overwriteMode, uint32_t flags, const wchar_t *relativePrefix);
 // Materialize exactly one native index into a new caller-owned regular file.
 // No archive path is used as an output path. Neither call overwrites a file.
 AV_API int32_t av_export_item(void *session, void *job, uint32_t index, const wchar_t *output);
@@ -43,7 +44,22 @@ AV_API int32_t av_export_item(void *session, void *job, uint32_t index, const wc
 // source/session intact. The caller owns commit/recovery of this staged output.
 AV_API int32_t av_replace_item(void *session, void *job, uint32_t index,
   const wchar_t *replacement, const wchar_t *output);
+AV_API int32_t av_can_delete_items(void *session);
+AV_API int32_t av_delete_items(void *session, void *job, const uint32_t *indices,
+  uint32_t count, const wchar_t *output);
 AV_API void av_close(void *session);
+// 11=write format (path1=name, path2=extension, flags=capabilities).
+// 12=publish staged outputs before deleting sources (reply 1 authorizes deletion).
+AV_API int32_t av_write_formats(void *job);
+struct AvWriteOptions {
+  const wchar_t *format, *source, *output, *password, *sfxModule;
+  uint32_t numProperties, numVolumes, action, pathMode, flags;
+};
+// Writes only to an empty caller-owned staging location. An optional existing
+// archive is read as input. The caller owns publishing all resulting files.
+AV_API int32_t av_write_archive(void *job, const AvWriteOptions *options,
+  const wchar_t * const *paths, uint32_t count, const wchar_t * const *propertyNames,
+  const wchar_t * const *propertyValues, const uint64_t *volumeSizes);
 // Filesystem inputs are explicit absolute paths, never wildcard expressions.
 // Transfer reuses the upstream FS provider and existing overwrite events.
 AV_API int32_t av_fs_transfer(void *job, const wchar_t * const *paths, uint32_t count,

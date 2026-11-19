@@ -21,6 +21,7 @@
   <ItemGroup>
     <Content Include="..\..\build\native-bridge\Arkvello.Native.dll" Link="Arkvello.Native.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\build\windows-x64\7z.dll" Link="7z.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\build\windows-x64\7z.sfx" Link="7z.sfx" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\DOC\License.txt;..\..\DOC\copying.txt;..\..\DOC\unRarLicense.txt" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Fluent\LICENSE;Assets\Fluent\NOTICE" Link="Licenses\FluentSystemIcons\%(Filename)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

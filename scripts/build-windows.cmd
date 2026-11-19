@@ -25,6 +25,8 @@ call :build CPP\7zip\Bundles\Format7zF 7z.dll
 if errorlevel 1 exit /b 1
 call :build CPP\7zip\UI\Console 7z.exe
 if errorlevel 1 exit /b 1
+call :build CPP\7zip\Bundles\SFXWin 7z.sfx
+if errorlevel 1 exit /b 1
 if /i "%~1"=="core" goto notices
 call :build CPP\7zip\UI\GUI 7zG.exe
 if errorlevel 1 exit /b 1
