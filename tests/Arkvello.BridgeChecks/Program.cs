@@ -282,7 +282,16 @@ try
     using (var editLeaf = editMiddle.OpenChild(0, leafJob, temporaryRoot: scratch).Session!)
     using (var editJob = new ArchiveJob(_ => new()))
     {
+        Check("browsing does not hash the root archive", editRoot.RootSourceStamp == null && editLeaf.RootSourceStamp == null);
+        try
+        {
+            using var writer = File.OpenWrite(editTarget);
+            Check("live archive source denies competing writes", false);
+        }
+        catch (IOException error) when ((error.HResult & 0xFFFF) == 32) { Check("live archive source denies competing writes", true); }
         var handoff = ArchiveEdit.Begin(editLeaf, 1, editJob, scratch);
+        Check("editing captures the retained root bytes", editRoot.RootSourceStamp == ArchiveSourceStamp.Capture(editTarget) &&
+            editLeaf.RootSourceStamp == editRoot.RootSourceStamp);
         var edit = handoff.Edit!;
         Check("editor handoff exports exact duplicate index and journals recovery", handoff.Result.Succeeded && File.ReadAllText(edit.WorkingFile.Path) == "second duplicate" && File.Exists(Path.Combine(edit.RecoveryPath, "recovery.json")));
         Check("unmodified editor handoff detects no changes", !edit.HasChangesSinceExport());

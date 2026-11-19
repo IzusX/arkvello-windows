@@ -19,8 +19,9 @@ The ordinary framework-dependent developer output is:
 
 `src/Arkvello.WinUI/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/Arkvello.exe`
 
-Launch it directly, or pass `--open "C:\path\folder-or-archive"`. Ordinary startup
-opens the user's home directory. This is a separate executable; the original
+Launch it directly, pass `"C:\path\folder-or-archive"` as the first argument as
+Explorer does, or use `--open "C:\path\folder-or-archive"`. Startup without
+a path opens the user's home directory. This is a separate executable; the original
 `build/windows-x64/7zFM.exe` remains the old Win32 prototype.
 
 Requirements: existing MSVC x64 tools/Windows SDK used by the original build,

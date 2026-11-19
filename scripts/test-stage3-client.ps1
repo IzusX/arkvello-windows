@@ -9,7 +9,9 @@ $started = [DateTime]::UtcNow
 $launch = [Diagnostics.ProcessStartInfo]::new([IO.Path]::GetFullPath($Executable))
 $launch.WorkingDirectory = $repo
 $launch.UseShellExecute = $false
-foreach ($argument in '--open', (Join-Path $Fixture 'files'), '--verify-stage3', $Fixture, '--diagnostics') { $launch.ArgumentList.Add($argument) }
+$archive = Join-Path $Fixture 'encoded launch Ω.7z'
+Copy-Item -LiteralPath (Join-Path $Fixture 'encoded.7z') -Destination $archive -Force
+foreach ($argument in $archive, '--verify-stage3', $Fixture, '--diagnostics') { $launch.ArgumentList.Add($argument) }
 # An app-local CLR must be selected even with no valid global runtime root.
 # This does not uninstall installed runtimes or claim a clean VM.
 $launch.Environment['DOTNET_ROOT'] = Join-Path $repo 'build\no-installed-runtime'

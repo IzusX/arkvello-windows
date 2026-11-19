@@ -6,6 +6,8 @@ namespace Arkvello.Services;
 public sealed class ArchiveSession : IDisposable
 {
     private readonly ArchiveTemporaryFile? temporary;
+    private FileStream? rootSource;
+    private ArchiveSourceStamp? rootSourceStamp;
     public Guid Identity { get; } = Guid.NewGuid();
     public NativeArchive Archive { get; }
     public IReadOnlyList<ArchiveEntry> Entries { get; }
@@ -15,7 +17,7 @@ public sealed class ArchiveSession : IDisposable
     public string PhysicalPath { get; }
     public string DisplayPath { get; }
     public string RootPath => Parent?.RootPath ?? PhysicalPath;
-    public ArchiveSourceStamp RootSourceStamp { get; private set; } = null!;
+    public ArchiveSourceStamp? RootSourceStamp => Parent == null ? rootSourceStamp : Parent.RootSourceStamp;
     public bool IsClosed => Archive.IsClosed;
     private ArchiveSession(NativeArchive archive, IReadOnlyList<ArchiveEntry> entries,
         string path, string display, ArchiveSession? parent, uint? parentIndex,
@@ -24,22 +26,32 @@ public sealed class ArchiveSession : IDisposable
         Archive = archive; Entries = entries; PhysicalPath = path; DisplayPath = display;
         Parent = parent; ParentIndex = parentIndex; ParentFolder = parentFolder; this.temporary = temporary;
     }
-    public static (ArchiveSession? Session, ArchiveResult Result) Open(string path, ArchiveJob job)
+    public static (ArchiveSession? Session, ArchiveResult Result) Open(string path, ArchiveJob job, bool captureSource = false)
     {
-        var stamp = ArchiveSourceStamp.Capture(path, job);
-        var opened = OpenLevel(Path.GetFullPath(path), Path.GetFullPath(path), null, null, "", null, job);
-        if (opened.Session != null)
+        path = Path.GetFullPath(path);
+        // Keep the root bytes stable for this session, even if the codec
+        // releases its input stream after reading the archive headers.
+        FileStream? source = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        try
         {
+            var opened = OpenLevel(path, path, null, null, "", null, job);
+            if (opened.Session == null) return opened;
             try
             {
-                if (ArchiveSourceStamp.Capture(path, job) != stamp)
-                    throw new IOException("Архив изменился во время открытия. Повторите попытку.");
-                opened.Session.RootSourceStamp = stamp;
+                opened.Session.rootSource = source;
+                source = null;
+                if (captureSource) opened.Session.CaptureRootSourceStamp(job);
+                return opened;
             }
             catch { opened.Session.Dispose(); throw; }
         }
-        return opened;
+        finally { source?.Dispose(); }
     }
+
+    internal ArchiveSourceStamp CaptureRootSourceStamp(ArchiveJob job) =>
+        Parent != null ? Parent.CaptureRootSourceStamp(job)
+            : rootSourceStamp ??= ArchiveSourceStamp.Capture(
+                rootSource ?? throw new ObjectDisposedException(nameof(ArchiveSession)), job);
 
     private static (ArchiveSession? Session, ArchiveResult Result) OpenLevel(string path, string display,
         ArchiveSession? parent, uint? index, string folder, ArchiveTemporaryFile? temporary, ArchiveJob job)
@@ -51,7 +63,6 @@ public sealed class ArchiveSession : IDisposable
             if (candidate == null) return (null, opened.Result);
             var entries = candidate.ReadEntries(job);
             var session = new ArchiveSession(candidate, entries, path, display, parent, index, folder, temporary);
-            if (parent != null) session.RootSourceStamp = parent.RootSourceStamp;
             candidate = null;
             return (session, new(0, job.Issues));
         }
@@ -116,7 +127,12 @@ public sealed class ArchiveSession : IDisposable
         }
         finally { staged?.Dispose(); }
     }
-    public void Dispose() { Archive.Dispose(); temporary?.Dispose(); }
+    public void Dispose()
+    {
+        Archive.Dispose();
+        rootSource?.Dispose(); rootSource = null;
+        temporary?.Dispose();
+    }
 }
 
 public sealed class ArchiveTemporaryFile : IDisposable

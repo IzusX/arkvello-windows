@@ -139,7 +139,11 @@ public sealed partial class MainWindow : Window
             foreach (var pane in panels) pane.RefreshIcons?.Invoke();
         };
         int open = Array.IndexOf(args, "--open");
-        await Navigate(open >= 0 && args.Length > open + 1 ? args[open + 1] : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), remember: false);
+        // Explorer launches an unpackaged app with the selected path as argv[1].
+        string? startupPath = open >= 0 && args.Length > open + 1 ? args[open + 1] :
+            args.Length > 1 && !args[1].StartsWith('-') ? args[1] : null;
+        await Navigate(startupPath ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), remember: false);
+        if (closing) return;
         if (windowPreferences.TwoPanels) await SetTwoPanels(true);
         windowReady = !closing;
         if (NativeDependencies.Check(AppContext.BaseDirectory) is { } dependencyError) ShowError(dependencyError);
@@ -622,17 +626,17 @@ public sealed partial class MainWindow : Window
         finally { busy = false; UpdateStatus(); if (closing) Close(); }
     }
 
-    private async Task<ArchiveResult?> OpenArchive(string path, bool remember, bool quietNotArchive = false)
+    private async Task<ArchiveResult?> OpenArchive(string path, bool remember, bool quietNotArchive = false, bool captureSource = false)
     {
         ArchiveSession? candidate = null;
         var selectedProperties = SelectedProperties;
         var loadedProperties = new Dictionary<uint, IReadOnlyDictionary<uint, ArchiveProperty>>();
         var result = await RunOperation("Открытие архива", job =>
         {
-            var opened = ArchiveSession.Open(path, job);
+            var opened = ArchiveSession.Open(path, job, captureSource);
             candidate = opened.Session;
             return candidate != null && opened.Result.Succeeded ? LoadSessionColumns(candidate, selectedProperties, job, loadedProperties) : opened.Result;
-        }, showSuccess: false, quietNotArchive: quietNotArchive);
+        }, showSuccess: false, quietNotArchive: quietNotArchive, delayProgress: true);
         if (!closing && result?.HResult == 0 && candidate != null)
         {
             if (remember && Location.Length > 0 &&
@@ -673,7 +677,7 @@ public sealed partial class MainWindow : Window
             var opened = parent.OpenChild(index, job, parentFolder);
             candidate = opened.Session;
             return candidate != null && opened.Result.Succeeded ? LoadSessionColumns(candidate, selectedProperties, job, loadedProperties) : opened.Result;
-        }, showSuccess: false, quietNotArchive: true);
+        }, showSuccess: false, quietNotArchive: true, delayProgress: true);
         if (!closing && result?.HResult == 0 && candidate != null)
         {
             history.Push(CurrentLocation);
@@ -812,7 +816,7 @@ public sealed partial class MainWindow : Window
             await NavigateDirectory(OtherPanel, OtherFilesystemDirectory, remember: false, refresh: true);
     }
 
-    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true, bool quietNotArchive = false, bool showResult = true, bool shellProgress = false)
+    private async Task<ArchiveResult?> RunOperation(string title, Func<ArchiveJob, ArchiveResult> action, bool showSuccess = true, bool quietNotArchive = false, bool showResult = true, bool shellProgress = false, bool delayProgress = false)
     {
         if (busy) return null;
         ArchiveJob? created = null;
@@ -834,8 +838,23 @@ public sealed partial class MainWindow : Window
         lock (progressSync) { latestProgress = latestPath = null; }
         progressTimer.Start();
         allowProgressClose = false;
-        progressShown = shellProgress ? null : progressDialog.ShowAsync().AsTask();
-        if (shellProgress) Status.Text = title + "…";
+        DispatcherTimer? progressDelay = null;
+        if (shellProgress || delayProgress) Status.Text = title + "…";
+        if (!shellProgress)
+        {
+            if (!delayProgress) progressShown = progressDialog.ShowAsync().AsTask();
+            else
+            {
+                progressDelay = new() { Interval = TimeSpan.FromMilliseconds(250) };
+                progressDelay.Tick += (_, _) =>
+                {
+                    progressDelay.Stop();
+                    if (!closing && !operationCancelled && progressShown == null && promptDialog == null)
+                        progressShown = progressDialog.ShowAsync().AsTask();
+                };
+                progressDelay.Start();
+            }
+        }
         ArchiveResult? result = null;
         try
         {
@@ -856,9 +875,13 @@ public sealed partial class MainWindow : Window
         finally
         {
             activeJob = null; allowProgressClose = true;
+            progressDelay?.Stop();
             progressTimer.Stop(); FlushProgress();
-            if (!shellProgress) progressDialog.Hide();
-            if (progressShown != null) await progressShown;
+            if (progressShown != null)
+            {
+                progressDialog.Hide();
+                await progressShown;
+            }
             progressDialog = null; progressShown = null;
             // Detach reusable controls before the next operation's content is built.
             body.Children.Clear(); buttons.Children.Clear(); busy = false; UpdateStatus();
@@ -1051,19 +1074,18 @@ public sealed partial class MainWindow : Window
         var selected = list.SelectedItems.Cast<FileEntry>().Select(item => (item.FullPath, item.ArchiveIndex)).ToHashSet();
         var focused = CurrentItem();
         string prefix = archivePrefix;
-        var stamp = archiveSession?.RootSourceStamp;
         // A child is an owned snapshot; refreshing its view keeps its native
         // identity and parent chain. Root refresh opens a new source session.
         if (archiveSession?.Parent != null) ShowArchiveFolder();
         else if (archiveSession != null) await OpenArchive(archiveSession.RootPath, false);
         else if (directory.Length > 0) await NavigateDirectory(activePanel, directory, remember: false, refresh: true);
         if (closing) return;
-        if (archiveSession == null || archiveSession.RootSourceStamp == stamp)
-        {
-            if (archiveSession != null) { archivePrefix = prefix; ShowArchiveFolder(); }
-            foreach (var item in entries.Where(item => selected.Contains((item.FullPath, item.ArchiveIndex)))) if (!list.SelectedItems.Contains(item)) list.SelectedItems.Add(item);
-            lastCurrentItem = entries.FirstOrDefault(item => item.FullPath == focused?.FullPath && item.ArchiveIndex == focused?.ArchiveIndex);
-        }
+        if (archiveSession != null && archivePrefix != prefix &&
+            archiveEntries.Any(item => item.Path.Replace('\\', '/').StartsWith(prefix, StringComparison.Ordinal)))
+        { archivePrefix = prefix; ShowArchiveFolder(); }
+        // Restore rows that still identify the same entry in the refreshed view.
+        foreach (var item in entries.Where(item => selected.Contains((item.FullPath, item.ArchiveIndex)))) if (!list.SelectedItems.Contains(item)) list.SelectedItems.Add(item);
+        lastCurrentItem = entries.FirstOrDefault(item => item.FullPath == focused?.FullPath && item.ArchiveIndex == focused?.ArchiveIndex);
         FocusFileList();
     }
     private async void OnExtract(object sender, RoutedEventArgs e) => await Extract(false);

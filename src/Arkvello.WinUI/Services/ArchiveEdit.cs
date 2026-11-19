@@ -9,6 +9,12 @@ public sealed record ArchiveSourceStamp(long Length, string Hash)
     public static ArchiveSourceStamp Capture(string path, ArchiveJob? job = null)
     {
         using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Capture(source, job);
+    }
+
+    internal static ArchiveSourceStamp Capture(FileStream source, ArchiveJob? job)
+    {
+        source.Position = 0;
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         byte[] buffer = new byte[128 * 1024]; int count;
         while ((count = source.Read(buffer)) != 0) { job?.ThrowIfCancellationRequested(); hash.AppendData(buffer, 0, count); }
@@ -30,24 +36,23 @@ public sealed class ArchiveEdit
     private readonly ArchiveSourceStamp source;
     private ArchiveSourceStamp? original;
     private ArchiveSourceStamp? stagedEdit;
-    private ArchiveEdit(ArchiveSession session, uint index, ArchiveTemporaryFile file)
+    private ArchiveEdit(ArchiveSession session, uint index, ArchiveTemporaryFile file, ArchiveSourceStamp source)
     {
         Session = session; Index = index; WorkingFile = file;
         ItemName = session.Entries.Single(e => e.Index == index).Path;
-        source = session.RootSourceStamp;
+        this.source = source;
     }
     public static (ArchiveEdit? Edit, ArchiveResult Result) Begin(ArchiveSession session, uint index,
         ArchiveJob job, string? temporaryRoot = null)
     {
-        if (ArchiveSourceStamp.Capture(session.RootPath, job) != session.RootSourceStamp)
-            throw new IOException("Исходный архив изменён. Обновите его перед редактированием.");
+        var source = session.CaptureRootSourceStamp(job);
         var file = new ArchiveTemporaryFile(session.Entries.Single(e => e.Index == index).Path, temporaryRoot);
         bool retained = false;
         try
         {
             var result = session.Archive.ExportItem(index, file.Path, job);
             if (!result.Succeeded) return (null, result);
-            var edit = new ArchiveEdit(session, index, file);
+            var edit = new ArchiveEdit(session, index, file, source);
             edit.original = ArchiveSourceStamp.Capture(file.Path, job);
             edit.WriteJournal("editing", null);
             retained = true;

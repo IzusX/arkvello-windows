@@ -142,9 +142,9 @@ public sealed partial class MainWindow
                 var saved = await RunOperation("Сохранение архива", job => { backup = edit.Commit(staged, job); return new(0, []); }, showSuccess: false);
                 if (closing) return;
                 string? saveError = saved?.Succeeded == true ? null : Notice.Message;
-                await OpenArchive(rootPath, false);
+                await OpenArchive(rootPath, false, captureSource: saved?.Succeeded == true);
                 if (saveError != null) ShowError(saveError + "\nРабочая копия: " + edit.RecoveryPath);
-                if (saved?.Succeeded == true && archiveSession?.RootSourceStamp == expectedRoot)
+                if (saved?.Succeeded == true && expectedRoot != null && archiveSession?.RootSourceStamp == expectedRoot)
                 {
                     bool restored = true;
                     foreach (var parentItem in chain)

@@ -197,8 +197,22 @@ upstream virtual roots, bookmarks, advanced filesystem properties, reparse and
 cloud placeholder copying, and explicit alternate-stream sources. The drive
 picker provides access to Windows drive letters and the address field accepts
 UNC share paths. Copy replacement leaves completed work in place on cancellation.
-Plain-file recognition currently inherits the slice's full source hashing cost
-before shell handoff.
+
+### 2026-11-19 follow-up
+
+- Launch accepts a positional file path, including spaces and non-ASCII characters.
+  The WinUI diagnostic verifies that it opens the archive on startup using the
+  same argument form that Explorer supplies.
+- Root browsing keeps a read lease and leaves content hashing to edit-back.
+  Archive edit tests verify the lease, deferred hashing and same-length
+  modification detection at commit. On a local 256 MiB stored 7z with one item,
+  service open/list median was 324.39 ms before and 1.66 ms after across seven
+  warm runs per build. This excludes app startup, layout and cold-cache I/O.
+- Desktop drag-and-drop remains open. A real pointer gesture to a folder raised
+  WinUI's drag start and then completion with no effect. No target handler ran.
+  The same gesture moved a disposable file in Explorer. A separate WinUI row
+  source and eager StorageItems payload gave the same result in the test and
+  were left out of the fix. This is independent of the StorageItems checks.
 
 ## Reproduce
 

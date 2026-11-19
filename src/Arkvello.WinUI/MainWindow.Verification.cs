@@ -33,6 +33,9 @@ public sealed partial class MainWindow
         }
         try
         {
+            Record("positional archive argument opens the archive on startup",
+                archiveSession?.RootPath == Path.GetFullPath(Path.Combine(fixture, "encoded launch Ω.7z")) && entries.Count == 10_000 &&
+                archiveSession.RootSourceStamp == null);
             var io = Stopwatch.StartNew();
             await Navigate(Path.Combine(fixture, "files"), false);
             Record("real filesystem enumeration", entries.Count == 10_000, new { count = entries.Count, ms = io.Elapsed.TotalMilliseconds });
