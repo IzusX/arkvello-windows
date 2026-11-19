@@ -241,20 +241,20 @@ public sealed partial class MainWindow
         catch (Exception error) { ShowError(error.Message); }
         finally { configuring = false; UpdateFileCommands(); if (closing) Close(); }
     }
-    private async Task<ArchiveResult?> PasteFiles(DataPackageView data, string target, DataPackageOperation? requested = null)
+    private async Task<ArchiveResult?> PasteFiles(DataPackageView data, string target)
     {
         if (!FilesystemReady) return null;
         string[] paths;
         configuring = true; UpdateStatus();
         try
         {
-            if (!data.Contains(StandardDataFormats.StorageItems)) throw new NotSupportedException("В буфере или перетаскивании нет файлов и папок.");
+            if (!data.Contains(StandardDataFormats.StorageItems)) throw new NotSupportedException("В буфере обмена нет файлов и папок.");
             paths = (await data.GetStorageItemsAsync()).Select(item => item.Path).ToArray();
             if (paths.Length == 0 || paths.Any(string.IsNullOrWhiteSpace)) throw new NotSupportedException("Виртуальные элементы без файлового пути пока не поддерживаются.");
         }
         finally { configuring = false; UpdateStatus(); }
         if (closing) { Close(); return null; }
-        bool move = (requested ?? data.RequestedOperation) == DataPackageOperation.Move;
+        bool move = data.RequestedOperation == DataPackageOperation.Move;
         var result = await TransferFiles(paths, target, move);
         // A skipped move must not tell Explorer to discard its cut selection.
         if (result?.Succeeded == true)
@@ -270,9 +270,8 @@ public sealed partial class MainWindow
         return result;
     }
 
-    private void ConfigureFileInput(PanelState pane, ListViewBase target)
+    private void ConfigureFileInput(ListViewBase target)
     {
-        target.AllowDrop = true; target.CanDragItems = true;
         target.PreviewKeyDown += async (_, e) =>
         {
             if (e.Handled || !FilesystemReady || !ReferenceEquals(target, list)) return;
@@ -287,67 +286,5 @@ public sealed partial class MainWindow
             else if (ctrl && e.Key == VirtualKey.N && !KeyDown(VirtualKey.Menu)) { e.Handled = true; await CreateItem(false); }
             else if (e.Key == VirtualKey.Delete) { e.Handled = true; await DeleteFiles(true); }
         };
-        target.DragItemsStarting += (_, e) =>
-        {
-            if (!ReferenceEquals(pane.List, target) || !ActivatePanel(pane) || !FilesystemReady) { e.Cancel = true; return; }
-            string[] paths = e.Items.Cast<FileEntry>().Select(f => f.FullPath).ToArray();
-            if (paths.Length == 0) { e.Cancel = true; return; }
-            fileDragInProgress = true;
-            SetDraggedFiles(e.Data, paths);
-        };
-        target.DragItemsCompleted += async (_, _) =>
-        {
-            fileDragInProgress = false;
-            if (!busy && !configuring && !closing && pane.ArchiveSession == null && pane.Directory.Length > 0 && ReferenceEquals(pane.List, target))
-                await NavigateDirectory(pane, pane.Directory, remember: false, refresh: true);
-        };
-        string DropTarget(DependencyObject? source)
-        {
-            for (; source != null && !ReferenceEquals(source, target); source = VisualTreeHelper.GetParent(source))
-                if (source is Microsoft.UI.Xaml.Controls.Primitives.SelectorItem container && target.ItemFromContainer(container) is FileEntry { IsDirectory: true } folder) return folder.FullPath;
-            return pane.Directory;
-        }
-        target.DragOver += (_, e) =>
-        {
-            e.Handled = true; e.AcceptedOperation = DataPackageOperation.None;
-            if (busy || configuring || renameBox != null || pane.ArchiveSession != null ||
-                !pane.DirectoryAvailable || !e.DataView.Contains(StandardDataFormats.StorageItems)) return;
-            if (e.Modifiers.HasFlag(Windows.ApplicationModel.DataTransfer.DragDrop.DragDropModifiers.Control) &&
-                e.Modifiers.HasFlag(Windows.ApplicationModel.DataTransfer.DragDrop.DragDropModifiers.Shift)) return; // Link effect is not implemented.
-            bool move = e.Modifiers.HasFlag(Windows.ApplicationModel.DataTransfer.DragDrop.DragDropModifiers.Shift);
-            var action = move ? DataPackageOperation.Move : DataPackageOperation.Copy;
-            if ((e.AllowedOperations & action) == 0) return;
-            e.AcceptedOperation = action;
-            e.DragUIOverride.Caption = (move ? "Переместить в " : "Копировать в ") + DropTarget(e.OriginalSource as DependencyObject);
-            e.DragUIOverride.IsCaptionVisible = true;
-        };
-        target.Drop += async (_, e) =>
-        {
-            e.Handled = true;
-            if (e.AcceptedOperation == DataPackageOperation.None) return;
-            if (!ReferenceEquals(pane.List, target) || !ActivatePanel(pane) || !FilesystemReady)
-            { e.AcceptedOperation = DataPackageOperation.None; return; }
-            string path = DropTarget(e.OriginalSource as DependencyObject);
-            var deferral = e.GetDeferral();
-            try
-            {
-                var result = await PasteFiles(e.DataView, path, e.AcceptedOperation);
-                if (result?.Succeeded != true) e.AcceptedOperation = DataPackageOperation.None;
-            }
-            catch (Exception error) { e.AcceptedOperation = DataPackageOperation.None; ShowError(error.Message); }
-            finally { deferral.Complete(); }
-        };
-    }
-
-    private void SetDraggedFiles(DataPackage package, string[] paths)
-    {
-        package.RequestedOperation = DataPackageOperation.Copy | DataPackageOperation.Move;
-        package.SetDataProvider(StandardDataFormats.StorageItems, async request =>
-        {
-            var deferral = request.GetDeferral();
-            try { request.SetData(await StorageItems(paths)); }
-            catch (Exception error) { DispatcherQueue.TryEnqueue(() => ShowError("Не удалось подготовить перетаскивание: " + error.Message)); }
-            finally { deferral.Complete(); }
-        });
     }
 }

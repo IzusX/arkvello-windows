@@ -78,9 +78,9 @@ public sealed partial class MainWindow
             copy.SetStorageItems(await StorageItems([renamedPath]));
             var copied = await PasteFiles(copy.GetView(), target);
             Record("StorageItems paste uses real upstream copy without system clipboard", copied?.Succeeded == true && File.ReadAllText(Path.Combine(target, Path.GetFileName(renamedPath))) == "stage 4 real file" && File.Exists(renamedPath));
-            var drag = new DataPackage(); SetDraggedFiles(drag, [renamedPath]);
-            var dragItems = await drag.GetView().GetStorageItemsAsync();
-            Record("outbound delayed drag provider supplies the exact storage item", dragItems.Count == 1 && dragItems[0].Path == renamedPath && drag.RequestedOperation == (DataPackageOperation.Copy | DataPackageOperation.Move));
+            var drag = ShellFileDrag.CreateData(fixture, [renamedPath, occupied]);
+            try { Record("OLE drop target registers and outbound Shell object supplies the file list", shellDrag != null && ShellFileDrag.ContainsFiles(drag)); }
+            finally { System.Runtime.InteropServices.Marshal.ReleaseComObject(drag); }
             string moveTarget = Directory.CreateDirectory(Path.Combine(fixture, "move-destination")).FullName;
             var move = new DataPackage { RequestedOperation = DataPackageOperation.Move };
             move.SetStorageItems(await StorageItems([Path.Combine(target, Path.GetFileName(renamedPath))]));
@@ -108,6 +108,7 @@ public sealed partial class MainWindow
             Record("archive rows keep native Fluent fallback and make no shell requests", activePanel.RefreshIcons == null);
             await VerifyPanels(output, fixture, renamedPath, target, Record);
             await VerifyFileNavigationAndSelection(fixture, Record);
+            await VerifyShellDrop(fixture, target, Record);
             await VerifyCloseDuringTransfer(fixture, Record);
         }
         catch (Exception error) { results.Add(new { name = "unexpected failure", passed = false, error = error.ToString() }); Environment.ExitCode = 1; }
@@ -116,6 +117,43 @@ public sealed partial class MainWindow
             File.WriteAllText(Path.Combine(output, "client-checks.json"), JsonSerializer.Serialize(results, new JsonSerializerOptions { WriteIndented = true }));
             if (!closing) RequestClose();
         }
+    }
+
+    private async Task VerifyShellDrop(string fixture, string destination, Action<string, bool> record)
+    {
+        string sources = Directory.CreateDirectory(Path.Combine(fixture, "ole-sources")).FullName;
+        string copy = Path.Combine(sources, "copy Ω.txt");
+        string move = Path.Combine(sources, "move.txt");
+        File.WriteAllText(copy, "shell copy");
+        File.WriteAllText(move, "shell move");
+        await NavigateDirectory(activePanel, fixture, remember: false, refresh: true);
+        var folder = entries.Single(item => item.FullPath == destination);
+        list.ScrollIntoView(folder);
+        list.UpdateLayout();
+        if (list.ContainerFromItem(folder) is not FrameworkElement row || WindowHost.XamlRoot is not { } root || shellDrag == null)
+            throw new InvalidOperationException("Could not realize the OLE drop test folder.");
+
+        var point = row.TransformToVisual(WindowHost).TransformPoint(new(28, row.ActualHeight / 2));
+        var pixels = new Windows.Foundation.Point(point.X * root.RasterizationScale, point.Y * root.RasterizationScale);
+        fileDragInProgress = true;
+        try
+        {
+            foreach (string source in new[] { copy, move })
+            {
+                bool moving = source == move;
+                string expected = Path.Combine(destination, Path.GetFileName(source));
+                var data = ShellFileDrag.CreateData(sources, [source]);
+                try { shellDrag.DropForVerification(data, pixels, moving); }
+                finally { System.Runtime.InteropServices.Marshal.ReleaseComObject(data); }
+                for (int i = 0; i < 60 && (!File.Exists(expected) || moving && File.Exists(source)); ++i)
+                    await Task.Delay(25);
+                record(moving ? "OLE Shell move reaches the folder row and removes only its source"
+                    : "OLE Shell copy reaches the folder row and preserves the Unicode source",
+                    File.Exists(expected) && File.Exists(source) != moving &&
+                    File.ReadAllText(expected) == (moving ? "shell move" : "shell copy"));
+            }
+        }
+        finally { fileDragInProgress = false; }
     }
 
     private async Task VerifyCloseDuringTransfer(string fixture, Action<string, bool> record)

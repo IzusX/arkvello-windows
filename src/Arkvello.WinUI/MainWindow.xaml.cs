@@ -87,12 +87,14 @@ public sealed partial class MainWindow : Window
         // every unpackaged host (ERROR_NOT_FOUND on this machine).
         AppWindow.Closing += (_, e) =>
         {
-            if (busy) { e.Cancel = true; closing = true; CancelOperation(); }
+            if (fileDragInProgress || shellDrag?.IsDropping == true) e.Cancel = true;
+            else if (busy) { e.Cancel = true; closing = true; CancelOperation(); }
             else if (configuring && !closing) { e.Cancel = true; closing = true; currentDialog?.Hide(); }
         };
         Closed += (_, _) =>
         {
             closing = true;
+            shellDrag?.Dispose();
             SaveWindowPreferences();
             folderRefreshTimer.Stop();
             foreach (var pane in panels) pane.Watch?.Dispose();
@@ -148,6 +150,7 @@ public sealed partial class MainWindow : Window
         windowReady = !closing;
         if (NativeDependencies.Check(AppContext.BaseDirectory) is { } dependencyError) ShowError(dependencyError);
         // Explicit diagnostic mode never runs in ordinary application sessions.
+        InitializeShellDrag();
         if (args.Contains("--measure-list")) await MeasureList();
         int verify = Array.IndexOf(args, "--verify-stage3");
         if (verify >= 0 && args.Length > verify + 1) await VerifyStage3(args[verify + 1]);
@@ -369,7 +372,7 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetAutomationId(list, pane.Index == 0 ? "FileList" : "RightFileList");
         ConfigureContextMenu(pane, list);
         ConfigureSelectionInput(pane, list);
-        ConfigureFileInput(pane, list);
+        ConfigureFileInput(list);
         string template;
         bool useShell = pane.ArchiveSession == null;
         int iconSize = view switch { "LargeIcons" => 36, "SmallIcons" => 20, _ => 18 };
@@ -417,6 +420,7 @@ public sealed partial class MainWindow : Window
         pane.RefreshIcons = null;
         if (useShell) ConfigureShellIcons(pane, list, iconSize);
         Grid.SetRow(list, 1); layout.Children.Add(list);
+        ConfigureFileGestures(pane, list, layout);
         pane.ListHost.Children.Add(layout);
         if (selected.Count > 0) ApplySelectionRanges(list, entries, item => selected.Contains(item.Identity) ? true : null);
         list.SelectionChanged += (_, _) =>
@@ -1106,6 +1110,7 @@ public sealed partial class MainWindow : Window
     {
         // Window.Close() bypasses AppWindow.Closing. Menu/diagnostic close paths
         // must use the same cancellation/await policy as the system caption.
+        if (fileDragInProgress || shellDrag?.IsDropping == true) return;
         if (busy) { closing = true; CancelOperation(); return; }
         if (configuring) { closing = true; currentDialog?.Hide(); return; }
         Close();

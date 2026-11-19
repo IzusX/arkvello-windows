@@ -214,6 +214,21 @@ UNC share paths. Copy replacement leaves completed work in place on cancellation
   source and eager StorageItems payload gave the same result in the test and
   were left out of the fix. This is independent of the StorageItems checks.
 
+### File gestures follow-up (2026-11-19)
+
+- Mouse dragging from empty list space or the leading gutter selects items
+  with a rectangle. The list captures the pointer and scrolls near its vertical
+  edges. Ctrl toggles intersecting items, Shift extends selection, and mark mode
+  preserves existing marks. A desktop gesture selected four fixture rows.
+- Filesystem drags use OLE and a Shell data object. The window routes each drop
+  to the Shell drop target for the folder under the pointer, or for the current
+  directory over the list background. The Shell performs the copy or move.
+  The app-owned verification routes a copy and a move into a folder row and
+  checks the resulting data and originals.
+- A physical drag between panes and in both directions with Explorer still
+  needs acceptance. The automated pointer tool released the button before Shell
+  drag initialization in the observed run. The app skips that expired gesture.
+
 ## Reproduce
 
 PowerShell 7, repository root; native source changes require a fresh native build:

@@ -84,7 +84,7 @@ public sealed partial class MainWindow
 
     private async void OnFolderRefreshTick(object? sender, object e)
     {
-        if (!SelectionReady || fileDragInProgress || currentDialog != null) return;
+        if (!SelectionReady || fileDragInProgress || selectingWithMouse || currentDialog != null) return;
         foreach (var pane in panels)
         {
             if (pane.Watch?.ConsumeChanges() != true) continue;
