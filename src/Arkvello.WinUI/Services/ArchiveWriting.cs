@@ -11,7 +11,7 @@ internal enum ArchiveWriteFlags : uint
 internal enum ArchiveUpdateAction : uint { Add, Update, Freshen, Synchronize }
 internal enum ArchiveWritePath : uint { Relative, Full, Absolute }
 
-internal sealed record ArchiveWriteFormat(string Name, string Extension, uint Flags)
+internal sealed record ArchiveWriteFormat(string Name, string Extension, uint Flags, uint TimePrecisions, uint DefaultTimePrecision)
 {
     public bool RequiresSingleFile => (Flags & 1) != 0;
     public ArchiveWriteFlags Metadata => (ArchiveWriteFlags)(Flags & 30);
@@ -31,12 +31,20 @@ internal sealed record ArchiveWriteRequest(string Destination, string Format, st
 
 internal static class ArchiveWriting
 {
+    internal static (ulong Compression, ulong Decompression, ulong Budget)? EstimateMemory(string format, string method,
+        uint level, uint threads = 0, ulong dictionary = 0, ulong xzBlock = 0, ulong limit = 0, uint percent = 0)
+    {
+        int result = NativeApi.av_write_memory(format, method, level, threads, dictionary, xzBlock, limit, percent,
+            out ulong compression, out ulong decompression, out ulong budget);
+        return result == 0 ? (compression, decompression, budget) : null;
+    }
+
     internal static ArchiveWriteFormat[] Formats()
     {
         var formats = new List<ArchiveWriteFormat>();
         using var job = new ArchiveJob(e =>
         {
-            if (e.Kind == ArchiveEventKind.WriteFormat) formats.Add(new(e.Path1, e.Path2, e.Flags));
+            if (e.Kind == ArchiveEventKind.WriteFormat) formats.Add(new(e.Path1, e.Path2, e.Flags, (uint)e.Size1, (uint)e.Size2));
             return new();
         });
         int result = NativeApi.av_write_formats(job);
@@ -52,9 +60,9 @@ internal static class ArchiveWriting
         string name = Path.GetFileName(target);
         if (name.Length == 0 || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             throw new IOException("Укажите допустимое имя файла архива.");
-        foreach (string source in request.Paths)
+        string[] paths = request.Paths.Select(source => Path.TrimEndingDirectorySeparator(Path.GetFullPath(source))).ToArray();
+        foreach (string fullPath in paths)
         {
-            string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(source));
             if (target.Equals(fullPath, StringComparison.OrdinalIgnoreCase) ||
                 (Directory.Exists(fullPath) &&
                  target.StartsWith(Path.EndsInDirectorySeparator(fullPath) ? fullPath : fullPath + Path.DirectorySeparatorChar,
@@ -65,6 +73,7 @@ internal static class ArchiveWriting
             throw new IOException("Обновление многотомного архива не поддерживается.");
         if (!request.UpdateExisting && File.Exists(target))
             throw new IOException("Файл назначения уже существует.");
+        if (request.DeleteSources) CheckDeletionSources(paths, job);
 
         job.ThrowIfCancellationRequested();
         string staging = Path.Combine(parent, ".arkvello-" + Guid.NewGuid().ToString("N"));
@@ -115,12 +124,17 @@ internal static class ArchiveWriting
                         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                         { publicationError = error; return false; }
                     };
-                int result = NativeApi.av_write_archive(job, in options, request.Paths, (uint)request.Paths.Length,
+                int result = NativeApi.av_write_archive(job, in options, paths, (uint)paths.Length,
                     properties.Select(p => p.Key).ToArray(), properties.Select(p => p.Value).ToArray(), request.Volumes);
                 job.PublishBeforeDeleting = null;
                 if (publicationError != null) throw publicationError;
                 var status = new ArchiveResult(result, job.Issues);
-                if (!status.Succeeded) return status;
+                if (!status.Succeeded)
+                {
+                    if (!published || status.Cancelled) return status;
+                    job.ReportIssue(0, $"Архив сохранён. Удаление исходников прервано (0x{result:X8}).");
+                    return new(0, job.Issues);
+                }
                 if (!published) job.ThrowIfCancellationRequested();
             }
             if (before != null)
@@ -141,8 +155,8 @@ internal static class ArchiveWriting
                 PublishNew();
             if (request.DeleteSources)
             {
-                foreach (string path in request.Paths.Where(File.Exists))
-                    job.ReportIssue(0, $"Архив сохранён. Не удалось удалить исходный файл {path}.");
+                foreach (string path in paths.Where(path => File.Exists(path) || Directory.Exists(path)))
+                    job.ReportIssue(0, $"Архив сохранён. Исходный элемент остался на диске: {path}.");
             }
             return new(0, job.Issues);
         }
@@ -150,6 +164,32 @@ internal static class ArchiveWriting
         {
             job.PublishBeforeDeleting = null;
             if (!preserve) CleanStaging(staging, prepared, backup);
+        }
+    }
+
+    private static void CheckDeletionSources(string[] paths, ArchiveJob job)
+    {
+        foreach (string path in paths)
+        {
+            if (Path.GetDirectoryName(path) == null)
+                throw new IOException("Удаление корня диска или сетевой папки после сжатия недоступно.");
+            for (string? ancestor = Path.GetDirectoryName(path); ancestor != null; ancestor = Path.GetDirectoryName(ancestor))
+                CheckAttributes(ancestor);
+        }
+        var pending = new Stack<string>(paths);
+        while (pending.TryPop(out string? path))
+        {
+            if ((CheckAttributes(path) & FileAttributes.Directory) == 0) continue;
+            foreach (string child in Directory.EnumerateFileSystemEntries(path)) pending.Push(child);
+        }
+
+        FileAttributes CheckAttributes(string path)
+        {
+            job.ThrowIfCancellationRequested();
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("Удаление исходников после сжатия недоступно для путей через ссылки: " + path);
+            return attributes;
         }
     }
 

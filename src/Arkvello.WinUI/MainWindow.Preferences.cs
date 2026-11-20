@@ -14,7 +14,8 @@ public sealed partial class MainWindow
     private sealed record WindowPreferences(string Theme = "Default", bool TwoPanels = false,
         double SplitRatio = .5, PanePreferences? Left = null, PanePreferences? Right = null,
         string?[]? RecentPaths = null, string?[]? TransferDestinations = null, string?[]? ExtractDestinations = null,
-        WindowBounds? Bounds = null, bool AutoRefresh = true);
+        WindowBounds? Bounds = null, bool AutoRefresh = true,
+        Dictionary<string, CompressionPreset>? Compression = null, string ArchiveFormat = "7z");
 
     private readonly string? windowPreferencesPath = GetWindowPreferencesPath();
     private readonly WindowPreferences windowPreferences;
@@ -53,6 +54,9 @@ public sealed partial class MainWindow
         RestoreHistory(recentPaths, preferences.RecentPaths);
         RestoreHistory(transferDestinations, preferences.TransferDestinations);
         RestoreHistory(extractDestinations, preferences.ExtractDestinations);
+        if (preferences.Compression != null)
+            compressionPresets = new(preferences.Compression, StringComparer.OrdinalIgnoreCase);
+        lastArchiveFormat = preferences.ArchiveFormat;
         autoRefresh = preferences.AutoRefresh;
         AutoRefreshMenu.IsChecked = autoRefresh;
     }
@@ -134,7 +138,8 @@ public sealed partial class MainWindow
         static PanePreferences Capture(PanelState pane) => new(pane.View, pane.Sort, pane.Descending, pane.MarkMode, [.. pane.Columns],
             pane.TimePrecision, pane.TimeUtc);
         return new(WindowHost.RequestedTheme.ToString(), split, splitRatio, Capture(panels[0]), Capture(panels[1]),
-            [.. recentPaths], [.. transferDestinations], [.. extractDestinations], windowBounds, autoRefresh);
+            [.. recentPaths], [.. transferDestinations], [.. extractDestinations], windowBounds, autoRefresh,
+            compressionPresets.Count == 0 ? null : compressionPresets, lastArchiveFormat);
     }
 
     private void SaveWindowPreferences()

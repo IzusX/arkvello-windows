@@ -55,6 +55,19 @@ void CheckArchiveWriting()
     var formats = ArchiveWriting.Formats();
     Check("read writable formats from adjacent codec", new[] { "7z", "zip", "tar", "gzip", "xz" }
         .All(name => formats.Any(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase))));
+    Check("ZIP reports Windows, Unix and DOS timestamp precision",
+        formats.Single(f => f.Name.Equals("zip", StringComparison.OrdinalIgnoreCase)) is
+            { TimePrecisions: 7, DefaultTimePrecision: 0 });
+    var lzma = ArchiveWriting.EstimateMemory("7z", "LZMA2", 5, 2, 32UL << 20);
+    var parallelLzma = ArchiveWriting.EstimateMemory("7z", "LZMA2", 5, 4, 32UL << 20);
+    Check("LZMA2 estimate includes dictionary, parallel block buffering and decoder",
+        lzma is { } l && parallelLzma is { } p && l.Compression > l.Decompression &&
+        p.Compression > l.Compression && p.Decompression == 34UL << 20);
+    var solidXz = ArchiveWriting.EstimateMemory("xz", "LZMA2", 5, 4, 32UL << 20, 1, limit: 16UL << 20);
+    Check("solid XZ estimates one block and reports the requested budget",
+        solidXz is { } x && x.Compression == lzma!.Value.Compression && x.Budget == 16UL << 20);
+    Check("store estimate is one MiB in both directions",
+        ArchiveWriting.EstimateMemory("zip", "Deflate", 0, 4) is { Compression: 1UL << 20, Decompression: 1UL << 20 });
     string output = Path.Combine(root, "write"); Directory.CreateDirectory(output);
     string member = Path.Combine(input, "точный [1].txt");
     string folder = Path.Combine(input, "папка");
@@ -112,6 +125,44 @@ void CheckArchiveWriting()
         }, job).Succeeded);
     Check("original 7-Zip tests encrypted ZIP", Original7Zip("t", "-pFixture-Stage5", Path.Combine(output, "password.zip")) == 0);
     using (var job = new ArchiveJob(_ => new()))
+        Check("create 7z with encrypted data and public filenames", ArchiveWriting.Run(request with
+        {
+            Destination = Path.Combine(output, "encrypted-data.7z"), Password = "Fixture-Stage5"
+        }, job).Succeeded);
+    foreach (string name in new[] { "password.zip", "encrypted-data.7z" })
+    {
+        using var encrypted = Open(Path.Combine(output, name));
+        uint[] indices = encrypted.ReadEntries().Select(e => e.Index).ToArray();
+        foreach (bool test in new[] { false, true })
+        {
+            int attempts = 0;
+            bool retry = false, clean = false;
+            string destination = Path.Combine(output, name + (test ? "-tested" : "-extracted"));
+            using var job = new ArchiveJob(e =>
+            {
+                if (e.Kind != ArchiveEventKind.Password) return new();
+                attempts++;
+                if (attempts == 2)
+                {
+                    retry = (e.Flags & ArchiveJob.RetryPassword) != 0;
+                    clean = !Directory.Exists(destination);
+                }
+                return new(0, attempts == 1 ? "wrong" : "Fixture-Stage5");
+            });
+            var result = encrypted.ExtractInteractive(indices, destination, job, test, new());
+            Check($"{name} retries {(test ? "testing" : "extracting")} member data before writing and reuses corrected password",
+                result.Succeeded && attempts == 2 && retry && clean && (test
+                    ? !Directory.Exists(destination)
+                    : File.ReadAllBytes(Path.Combine(destination, Path.GetFileName(member))).SequenceEqual(File.ReadAllBytes(member))));
+        }
+        using var cancelled = new ArchiveJob(e => e.Kind == ArchiveEventKind.Password
+            ? (e.Flags & ArchiveJob.RetryPassword) == 0 ? new(0, "wrong") : new(-1)
+            : new());
+        string abandoned = Path.Combine(output, name + "-abandoned");
+        Check($"{name} cancelled password retry leaves destination untouched",
+            encrypted.ExtractInteractive(indices, abandoned, cancelled, false, new()).Cancelled && !Directory.Exists(abandoned));
+    }
+    using (var job = new ArchiveJob(_ => new()))
         Check("create encrypted headers in 7z", ArchiveWriting.Run(request with
         {
             Destination = Path.Combine(output, "headers.7z"), Password = "Fixture-Stage5",
@@ -138,6 +189,17 @@ void CheckArchiveWriting()
         { Destination = sfx, SfxModule = Path.Combine(repo, "build", "windows-x64", "7z.sfx") }, job).Succeeded);
     Check("original 7-Zip opens SFX archive", File.ReadAllBytes(sfx).AsSpan(0, 2).SequenceEqual("MZ"u8) &&
         Original7Zip("t", sfx) == 0);
+    using (var job = new ArchiveJob(_ => new()))
+    using (var session = ArchiveSession.Open(sfx, job).Session!)
+    {
+        uint index = session.Entries.Single(e => e.Path == Path.GetFileName(member)).Index;
+        var deleted = session.StageDeletion([index], job, output);
+        using var result = deleted.File;
+        byte[] stub = File.ReadAllBytes(Path.Combine(repo, "build", "windows-x64", "7z.sfx"));
+        Check("SFX deletion preserves the complete executable stub and remaining data",
+            deleted.Result.Succeeded && result != null && File.ReadAllBytes(result.Path).AsSpan().StartsWith(stub) &&
+            Original7Zip("t", result.Path) == 0);
+    }
     string split = Path.Combine(output, "parts.7z");
     using (var job = new ArchiveJob(_ => new()))
         Check("create several 7z volumes", ArchiveWriting.Run(request with
@@ -164,6 +226,18 @@ void CheckArchiveWriting()
     using (var job = new ArchiveJob(_ => new()))
         Check("source removal runs after publishing all volumes",
             ArchiveWriting.Run(removal, job).Succeeded && !File.Exists(disposable) && Original7Zip("t", published + ".001") == 0);
+    string disposableFolder = Directory.CreateDirectory(Path.Combine(input, "folder-after-archive")).FullName;
+    string subfolder = Directory.CreateDirectory(Path.Combine(disposableFolder, "папка")).FullName;
+    File.WriteAllText(Path.Combine(subfolder, "contents.txt"), "verified after removing folder");
+    string folderArchive = Path.Combine(output, "folder-source-removal.7z");
+    using (var job = new ArchiveJob(_ => new()))
+    {
+        var result = ArchiveWriting.Run(removal with { Destination = folderArchive, Paths = [disposableFolder], Volumes = [] }, job);
+        string folderOutput = Path.Combine(output, "folder-output");
+        Check($"folder removal archives and retains bytes before removing the selected tree ({string.Join(" / ", result.Issues.Select(e => e.Path1))})",
+            result.Succeeded && !Directory.Exists(disposableFolder) && Original7Zip("x", "-y", "-o" + folderOutput, folderArchive) == 0 &&
+            File.ReadAllText(Path.Combine(folderOutput, "folder-after-archive", "папка", "contents.txt")) == "verified after removing folder");
+    }
     byte[] before = File.ReadAllBytes(request.Destination);
     bool cancelledDuringWriting = false, addingLargeFile = false;
     using (var job = new ArchiveJob(e =>
@@ -186,15 +260,54 @@ void CheckArchiveWriting()
     Check("completed and failed operations remove owned staging folders", !Directory.EnumerateDirectories(output, ".arkvello-*").Any());
     foreach (var (format, extension, paths, options) in new[]
     {
-        ("tar", ".tar", new[] { member, folder }, new Dictionary<string, string> { ["m"] = "POSIX" }),
+        ("tar", ".tar", new[] { member, folder }, new Dictionary<string, string> { ["m"] = "POSIX", ["tp"] = "3", ["ta"] = "on" }),
+        ("zip", ".zip", new[] { member, folder }, new Dictionary<string, string> { ["m"] = "BZip2", ["d"] = "900000b", ["tp"] = "2" }),
+        ("bzip2", ".bz2", new[] { member }, new Dictionary<string, string> { ["x"] = "5", ["mt"] = "2", ["d"] = "300000b" }),
         ("gzip", ".gz", new[] { member }, new Dictionary<string, string> { ["x"] = "5", ["m"] = "Deflate" }),
-        ("xz", ".xz", new[] { member }, new Dictionary<string, string> { ["x"] = "3", ["mt"] = "1", ["d"] = "1m" })
+        ("xz", ".xz", new[] { member }, new Dictionary<string, string> { ["x"] = "3", ["mt"] = "1", ["d"] = "1m", ["s"] = "1m" })
     })
     {
         string name = Path.Combine(output, "format" + extension);
         using var job = new ArchiveJob(_ => new());
         var result = ArchiveWriting.Run(request with { Destination = name, Format = format, Paths = paths, Properties = options }, job);
         Check($"create and test {format} (0x{result.HResult:X8})", result.Succeeded && Original7Zip("t", name) == 0);
+    }
+
+    string zipMetadata = Path.Combine(output, "ntfs-times.zip");
+    DateTime created = new(2023, 6, 15, 12, 34, 56, DateTimeKind.Utc);
+    File.SetCreationTimeUtc(member, created);
+    using (var job = new ArchiveJob(_ => new()))
+        Check("ZIP stores explicit NTFS creation time", ArchiveWriting.Run(request with
+        {
+            Destination = zipMetadata, Format = "zip", Paths = [member],
+            Properties = new Dictionary<string, string> { ["tp"] = "0", ["tc"] = "on" }
+        }, job).Succeeded);
+    string restored = Path.Combine(output, "ntfs-times");
+    Check("original 7-Zip restores exact ZIP creation time",
+        Original7Zip("x", "-y", "-o" + restored, zipMetadata) == 0 &&
+        File.GetCreationTimeUtc(Path.Combine(restored, Path.GetFileName(member))) == created);
+
+    string seed = Directory.CreateDirectory(Path.Combine(input, "baseline", "items")).FullName;
+    string newer = Directory.CreateDirectory(Path.Combine(input, "update", "items")).FullName;
+    File.WriteAllText(Path.Combine(seed, "existing.txt"), "original");
+    File.WriteAllText(Path.Combine(seed, "absent.txt"), "kept according to action");
+    File.WriteAllText(Path.Combine(newer, "existing.txt"), "new content");
+    File.WriteAllText(Path.Combine(newer, "added.txt"), "new file");
+    File.SetLastWriteTimeUtc(Path.Combine(seed, "existing.txt"), created);
+    File.SetLastWriteTimeUtc(Path.Combine(newer, "existing.txt"), created.AddDays(1));
+    foreach (var mode in Enum.GetValues<ArchiveUpdateAction>())
+    {
+        using var originalJob = new ArchiveJob(_ => new());
+        using var updateJob = new ArchiveJob(_ => new());
+        var fixture = request with { Destination = Path.Combine(output, $"{mode}.7z"), Paths = [seed] };
+        string actual = Path.Combine(output, mode.ToString());
+        bool completed = ArchiveWriting.Run(fixture, originalJob).Succeeded &&
+            ArchiveWriting.Run(fixture with { Paths = [newer], Action = mode, UpdateExisting = true }, updateJob).Succeeded;
+        Check($"{mode} preserves the original update action semantics",
+            completed && Original7Zip("x", "-y", "-o" + actual, fixture.Destination) == 0 &&
+            File.ReadAllText(Path.Combine(actual, "items", "existing.txt")) == "new content" &&
+            File.Exists(Path.Combine(actual, "items", "absent.txt")) == (mode != ArchiveUpdateAction.Synchronize) &&
+            File.Exists(Path.Combine(actual, "items", "added.txt")) == (mode != ArchiveUpdateAction.Freshen));
     }
 }
 try
@@ -432,6 +545,18 @@ try
         using var verifyJob = new ArchiveJob(_ => new());
         string changed = Path.Combine(root, "nested-edited.txt");
         Check("nested edit survives reopening entire root chain", reopenedLeaf.Archive.ExportItem(1, changed, verifyJob).Succeeded && File.ReadAllText(changed) == "Edited Ω with different length");
+        using var deletionJob = new ArchiveJob(_ => new());
+        var deletion = leafSession.StageDeletion([1], deletionJob, scratch);
+        using var deletionRoot = deletion.File;
+        Check("stage nested deletion without changing source bytes", deletion.Result.Succeeded &&
+            deletionRoot != null && File.ReadAllBytes(nestedPath).SequenceEqual(nested));
+        using var verifyDeletion = new ArchiveJob(_ => new());
+        using var deletedRoot = ArchiveSession.Open(deletionRoot!.Path, verifyDeletion).Session!;
+        using var deletedMiddle = deletedRoot.OpenChild(0, verifyDeletion, temporaryRoot: scratch).Session!;
+        using var deletedLeaf = deletedMiddle.OpenChild(0, verifyDeletion, "папка/", scratch).Session!;
+        Check("nested deletion keeps remaining members and parent siblings",
+            deletedLeaf.Entries.Select(e => e.Path).SequenceEqual(leafSession.Entries.Where(e => e.Index != 1).Select(e => e.Path)) &&
+            deletedRoot.Entries.Select(e => e.Path).SequenceEqual(session.Entries.Select(e => e.Path)));
     }
     Check("closed nested sessions clean only owned temporary files", !Directory.EnumerateFiles(scratch, "*", SearchOption.AllDirectories).Any());
     // Full editor hand-off: original identity, nested staging, atomic replacement,

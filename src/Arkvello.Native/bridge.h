@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <wchar.h>
-// ABI 4. All strings are UTF-16, borrowed only until the callback returns.
+// ABI 5. All strings are UTF-16, borrowed only until the callback returns.
 // Functions run synchronously on the caller's worker. A session is single-owner,
 // non-reentrant; cancel/pause are the only concurrent calls. Never close in use.
 struct AvEvent {
@@ -48,9 +48,15 @@ AV_API int32_t av_can_delete_items(void *session);
 AV_API int32_t av_delete_items(void *session, void *job, const uint32_t *indices,
   uint32_t count, const wchar_t *output);
 AV_API void av_close(void *session);
-// 11=write format (path1=name, path2=extension, flags=capabilities).
+// 11=write format (path1=name, path2=extension, flags=capabilities,
+// size1=timestamp precision mask, size2=default precision).
 // 12=publish staged outputs before deleting sources (reply 1 authorizes deletion).
 AV_API int32_t av_write_formats(void *job);
+// Zero inputs select encoder defaults. xzBlock=1 selects an unbroken stream.
+// S_FALSE means no estimate is available for this method.
+AV_API int32_t av_write_memory(const wchar_t *format, const wchar_t *method, uint32_t level,
+  uint32_t threads, uint64_t dictionary, uint64_t xzBlock, uint64_t limit, uint32_t percent,
+  uint64_t *compression, uint64_t *decompression, uint64_t *budget);
 struct AvWriteOptions {
   const wchar_t *format, *source, *output, *password, *sfxModule;
   uint32_t numProperties, numVolumes, action, pathMode, flags;

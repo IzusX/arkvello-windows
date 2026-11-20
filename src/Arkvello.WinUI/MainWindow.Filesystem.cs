@@ -28,7 +28,9 @@ public sealed partial class MainWindow
         bool selected = FilesystemReady && (list.SelectedItems.Count > 0 || CurrentItem() != null);
         ExtractButton.IsEnabled = TestButton.IsEnabled = ExtractMenu.IsEnabled = TestMenu.IsEnabled = CanExtractOrTest;
         AddToArchiveButton.IsEnabled = AddToArchiveMenu.IsEnabled = selected;
-        CopyToButton.IsEnabled = CopyToMenu.IsEnabled = ClipboardCopyMenu.IsEnabled = ClipboardCutMenu.IsEnabled = selected;
+        CopyToButton.IsEnabled = CopyToMenu.IsEnabled = selected ||
+            (SelectionReady && archiveSession != null && (list.SelectedItems.Count > 0 || CurrentItem() != null));
+        ClipboardCopyMenu.IsEnabled = ClipboardCutMenu.IsEnabled = selected;
         MoveToButton.IsEnabled = MoveToMenu.IsEnabled = selected;
         DeleteButton.IsEnabled = DeleteMenu.IsEnabled = selected || CanDeleteArchiveItems;
         RenameMenu.IsEnabled = FilesystemReady && CurrentItem() != null;
@@ -55,6 +57,12 @@ public sealed partial class MainWindow
 
     private async Task TransferDialog(bool move, bool samePanel = false)
     {
+        if (archiveSession != null)
+        {
+            var selected = OperatedFiles();
+            if (!move && selected.Length > 0) await Extract(false, selected, copy: true, samePanel);
+            return;
+        }
         if (!FilesystemReady) return;
         string[] paths = OperatedFiles().Select(f => f.FullPath).ToArray(); if (paths.Length == 0) return;
         configuring = true; UpdateStatus();

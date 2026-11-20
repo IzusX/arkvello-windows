@@ -11,13 +11,17 @@
 #include "../../CPP/Common/MyInitGuid.h"
 #include "../../CPP/Windows/FileDir.h"
 #include "../../CPP/Windows/FileName.h"
+#include "../../CPP/Windows/Handle.h"
 #include "../../CPP/Windows/PropVariant.h"
+#include "../../CPP/Windows/System.h"
 #include "../../CPP/7zip/UI/Common/ArchiveExtractCallback.h"
 #include "../../CPP/7zip/UI/Agent/Agent.h"
 #include "../../CPP/7zip/UI/Common/PropIDUtils.h"
 #include "../../CPP/7zip/UI/Common/Update.h"
 #include "../../CPP/7zip/UI/FileManager/FSFolder.h"
 #include "../../CPP/7zip/Common/FilePathAutoRename.h"
+#include "../../CPP/7zip/Common/LimitedStreams.h"
+#include "../../CPP/7zip/Compress/CopyCoder.h"
 
 HINSTANCE g_hInstance = nullptr;
 // Bounded extraction of CFsFolderStat::Enumerate from upstream FSFolder.cpp.
@@ -259,6 +263,8 @@ class WriteCallback final : public IUpdateCallbackUI2, public IOpenCallbackUI {
   const wchar_t *initialPassword;
   CMyComBSTR_Wipe openPassword;
   const UStringVector &removablePaths;
+  const CBoolVector &removableDirectories;
+  std::vector<std::unique_ptr<NWindows::CHandle>> cleanupParents;
   bool publishedBeforeDeleting = false;
   HRESULT ConfirmPublished() {
     RINOK(job.check())
@@ -279,9 +285,35 @@ class WriteCallback final : public IUpdateCallbackUI2, public IOpenCallbackUI {
     RINOK(job.emit(e))
     return HRESULT_FROM_WIN32(error ? error : ERROR_READ_FAULT);
   }
+  HRESULT PinCleanupParents(const FString &path) {
+    cleanupParents.clear();
+    const unsigned rootLength = NWindows::NFile::NName::GetRootPrefixSize(path);
+    if (!rootLength) return FileError(path, ERROR_INVALID_PARAMETER);
+    // Pin ancestors in root-to-leaf order, skipping the volume/share root.
+    // Preserve the handles until the upstream delete call has returned.
+    for (unsigned i = rootLength; i < path.Len(); ++i) {
+      if (path[i] != L'\\' && path[i] != L'/') continue;
+      FString ancestor = path;
+      ancestor.DeleteFrom(i);
+      UString extended;
+      NWindows::NFile::NName::GetSuperPath(ancestor, extended, false);
+      auto handle = std::make_unique<NWindows::CHandle>();
+      HANDLE value = CreateFileW(extended.IsEmpty() ? ancestor.Ptr() : extended.Ptr(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+      if (value == INVALID_HANDLE_VALUE) return FileError(ancestor, GetLastError());
+      handle->Attach(value);
+      BY_HANDLE_FILE_INFORMATION info{};
+      if (!GetFileInformationByHandle(value, &info)) return FileError(ancestor, GetLastError());
+      if (!(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        return FileError(ancestor, ERROR_NOT_SUPPORTED);
+      cleanupParents.push_back(std::move(handle));
+    }
+    return S_OK;
+  }
 public:
-  WriteCallback(Job &value, const wchar_t *password, const UStringVector &paths)
-    : job(value), initialPassword(password), removablePaths(paths) {}
+  WriteCallback(Job &value, const wchar_t *password, const UStringVector &paths, const CBoolVector &directories)
+    : job(value), initialPassword(password), removablePaths(paths), removableDirectories(directories) {}
   HRESULT Open_CheckBreak() override { return job.check(); }
   HRESULT Open_SetTotal(const UInt64 *, const UInt64 *bytes) override { return SetTotal(bytes ? *bytes : 0); }
   HRESULT Open_SetCompleted(const UInt64 *, const UInt64 *bytes) override { return SetCompleted(bytes); }
@@ -325,9 +357,19 @@ public:
   HRESULT FinishArchive(const CFinishArchiveStat &) override { return job.check(); }
   HRESULT DeletingAfterArchiving(const FString &path, bool isDir) override {
     bool selected = false;
-    for (unsigned i = 0; !isDir && i < removablePaths.Size(); ++i)
-      if (path.Compare(removablePaths[i]) == 0) { selected = true; break; }
+    for (unsigned i = 0; i < removablePaths.Size(); ++i) {
+      const auto &source = removablePaths[i];
+      const bool directory = removableDirectories[i];
+      if ((directory == isDir && path.Compare(source) == 0) ||
+          (directory && path.Len() > source.Len() && path[source.Len()] == L'\\' &&
+           wmemcmp(path.Ptr(), source.Ptr(), source.Len()) == 0)) { selected = true; break; }
+    }
     if (!selected) return FileError(path, ERROR_INVALID_PARAMETER);
+    RINOK(PinCleanupParents(path))
+    NWindows::NFile::NFind::CFileInfo info;
+    if (!info.Find(path, false)) return FileError(path, GetLastError());
+    if (info.IsDir() != isDir || (info.Attrib & FILE_ATTRIBUTE_REPARSE_POINT))
+      return FileError(path, ERROR_NOT_SUPPORTED);
     RINOK(ConfirmPublished())
     return Path(path);
   }
@@ -515,7 +557,7 @@ HRESULT BindFlatFolder(Session &session, CMyComPtr<IFolderFolder> &folder, CAgen
 }
 }
 
-uint32_t av_abi() { return 4; }
+uint32_t av_abi() { return 5; }
 void *av_job_create(AvCallback callback, void *context) {
   try { return new Job{callback, context}; } catch (...) { return nullptr; }
 }
@@ -597,9 +639,90 @@ int32_t av_write_formats(void *value) {
         | (format.Flags_HardLinks() ? 4u : 0u) | (format.Flags_AltStreams() ? 8u : 0u)
         | (format.Flags_NtSecurity() ? 16u : 0u) | (format.Flags_CTime() ? 32u : 0u)
         | (format.Flags_MTime() ? 64u : 0u) | (format.Flags_ATime() ? 128u : 0u);
+      e.size1 = format.Get_TimePrecFlags();
+      e.size2 = format.Get_DefaultTimePrec();
       RINOK(job.emit(e))
     }
     return job.check();
+  } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
+}
+
+int32_t av_write_memory(const wchar_t *format, const wchar_t *method, uint32_t level,
+    uint32_t threads, uint64_t dictionary, uint64_t xzBlock, uint64_t limit, uint32_t percent,
+    uint64_t *compression, uint64_t *decompression, uint64_t *budget) {
+  if (!format || !method || !compression || !decompression || !budget || level > 9 ||
+      dictionary > ((UInt64)1 << 32) || xzBlock > ((UInt64)1 << 48)) return E_INVALIDARG;
+  try {
+    const UInt64 MiB = 1 << 20;
+    const bool sevenZip = StringsAreEqualNoCase_Ascii(format, "7z");
+    const bool zip = StringsAreEqualNoCase_Ascii(format, "zip");
+    const bool xz = StringsAreEqualNoCase_Ascii(format, "xz");
+    const bool lzma = StringsAreEqualNoCase_Ascii(method, "LZMA");
+    const bool lzma2 = StringsAreEqualNoCase_Ascii(method, "LZMA2");
+    const bool ppmd = StringsAreEqualNoCase_Ascii(method, "PPMd");
+    const bool bzip2 = StringsAreEqualNoCase_Ascii(method, "BZip2");
+    const bool deflate = StringsAreEqualNoCase_Ascii(method, "Deflate") ||
+        StringsAreEqualNoCase_Ascii(method, "Deflate64");
+    size_t ram = sizeof(size_t) << 29;
+    NWindows::NSystem::GetRamSize(ram);
+    const UInt64 reducedRam = std::max<UInt64>(64 * MiB, ram);
+    *budget = limit != 0 ? limit : Calc_From_Val_Percents(reducedRam, percent ? percent : 80);
+    if ((level == 0 && (sevenZip || zip)) || StringsAreEqualNoCase_Ascii(method, "Copy")) {
+      *compression = *decompression = MiB;
+      return S_OK;
+    }
+    if (!(lzma || lzma2 || ppmd || bzip2 || deflate)) return S_FALSE;
+
+    const UInt32 maxThreads = zip ? 128 : lzma2 ? 512 : bzip2 ? 64 : lzma ? 2 : 1;
+    const UInt32 requested = threads ? threads : GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+    UInt32 workers = std::max<UInt32>(1, std::min<UInt32>(requested, maxThreads));
+    CMethodProps props;
+    props.AddProp_Level(level);
+    if (dictionary != 0) {
+      auto &p = props.Props.AddNew();
+      p.Id = ppmd ? NCoderPropID::kUsedMemorySize : NCoderPropID::kDictionarySize;
+      p.Value = (UInt64)dictionary;
+    }
+    if (xz && xzBlock > 1) props.AddProp_BlockSize2(xzBlock);
+
+    // Use the encoder's defaults and match-finder estimates. Add the GUI's
+    // archive-level ZIP buffers, LZMA2 blocks and Ultra filter overhead.
+    auto estimate = [&](UInt32 n) {
+      const UInt32 perCoder = std::min<UInt32>(n, (lzma || lzma2) && level >= 5 ? 2u : 1u);
+      UInt32 blocks = n / perCoder;
+      UInt64 size = sevenZip && level >= 9 ? 29 * MiB : 0;
+      if (zip && blocks > 1) size += (UInt64)blocks * (sizeof(size_t) << 23);
+      if (lzma || lzma2) {
+        CMethodProps coder = props;
+        coder.AddProp_NumThreads(perCoder);
+        *decompression = std::min<UInt64>(coder.Get_Lzma_DicSize(), (UInt64)15 << 28) + 2 * MiB;
+        if (xzBlock == 1 || (!lzma2 && !zip)) blocks = 1;
+        if (lzma2 && blocks > 1) {
+          const UInt64 chunk = coder.Get_Xz_BlockSize();
+          return size + blocks * coder.Get_Lzma_MemUsage(false) + (blocks * 2 + blocks / 8 + 1) * chunk;
+        }
+        return size + blocks * coder.Get_Lzma_MemUsage(true);
+      }
+      if (ppmd) {
+        *decompression = props.Get_Ppmd_MemSize() + 2 * MiB;
+        return size + *decompression * (zip ? n : 1u);
+      }
+      if (bzip2) {
+        *decompression = 7 * MiB;
+        return size + 10 * MiB * n;
+      }
+      *decompression = 2 * MiB;
+      return size + 4 * MiB * blocks;
+    };
+    *compression = estimate(workers);
+    if (!threads && (zip || lzma2)) {
+      const UInt32 step = lzma2 && level >= 5 ? 2 : 1;
+      while (*compression > *budget && workers > step) {
+        workers -= step;
+        *compression = estimate(workers);
+      }
+    }
+    return S_OK;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
 }
 
@@ -665,17 +788,19 @@ int32_t av_write_archive(void *value, const AvWriteOptions *request,
     }
     NWildcard::CCensor censor;
     UStringVector removablePaths;
+    CBoolVector removableDirectories;
     for (uint32_t i = 0; i < count; ++i) {
       if (!paths[i] || !*paths[i]) return E_INVALIDARG;
       if (options.DeleteAfterCompressing) {
         NWindows::NFile::NFind::CFileInfo info;
-        if (!info.Find(paths[i], false) || info.IsDir() || (info.Attrib & FILE_ATTRIBUTE_REPARSE_POINT))
+        if (!info.Find(paths[i], false) || (info.Attrib & FILE_ATTRIBUTE_REPARSE_POINT))
           return E_INVALIDARG;
         removablePaths.Add(paths[i]);
+        removableDirectories.Add(info.IsDir());
       }
       censor.AddPreItem_NoWildcard(paths[i]);
     }
-    WriteCallback callback(job, request->password, removablePaths);
+    WriteCallback callback(job, request->password, removablePaths, removableDirectories);
     CUpdateErrorInfo error;
     const HRESULT h = UpdateArchive(services.codecs, types, request->source ? request->source : L"",
       censor, options, error, &callback, &callback, true);
@@ -786,8 +911,14 @@ int32_t av_extract(void *sessionValue, void *jobValue, const uint32_t *indices,
     CUIntVector selected;
     for (uint32_t i = 0; i < count; ++i) {
       if (indices[i] >= itemCount || (i && indices[i] <= indices[i - 1])) return E_INVALIDARG;
+      if (test && (flags & 4)) {
+        NWindows::NCOM::CPropVariant encrypted;
+        RINOK(session.link.GetArchive()->GetProperty(indices[i], kpidEncrypted, &encrypted))
+        if (encrypted.vt != VT_BOOL || encrypted.boolVal == VARIANT_FALSE) continue;
+      }
       selected.Add(indices[i]);
     }
+    if (selected.IsEmpty()) return S_OK;
     FString dest;
     if (!test) {
       dest = destination;
@@ -897,6 +1028,24 @@ int32_t av_fs_delete(void *value, const wchar_t * const *paths, uint32_t count,
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }
 }
 
+// Preserve the carrier prefix as CommonUpdateOperation does. The archive
+// writer's seek/size origin starts after that prefix.
+static HRESULT GetUpdateOutput(const CArc &arc, IOutStream *stream, CMyComPtr<IOutStream> &tail) {
+  if (arc.ArcStreamOffset == 0) {
+    tail = stream;
+    return S_OK;
+  }
+  if (arc.Offset < 0) return E_NOTIMPL;
+  RINOK(arc.InStream->Seek(0, STREAM_SEEK_SET, nullptr))
+  RINOK(NCompress::CopyStream_ExactSize(arc.InStream, stream, arc.ArcStreamOffset, nullptr))
+  auto *offset = new CTailOutStream;
+  tail = offset;
+  offset->Stream = stream;
+  offset->Offset = arc.ArcStreamOffset;
+  offset->Init();
+  return S_OK;
+}
+
 int32_t av_replace_item(void *sessionValue, void *jobValue, uint32_t index,
   const wchar_t *replacement, const wchar_t *output) {
   if (!sessionValue || !jobValue || !replacement || !*replacement || !output || !*output) return E_INVALIDARG;
@@ -925,11 +1074,13 @@ int32_t av_replace_item(void *sessionValue, void *jobValue, uint32_t index,
     auto *file = new COutFileStream;
     CMyComPtr<IOutStream> stream = file;
     if (!file->Create_NEW(output)) return HRESULT_FROM_WIN32(GetLastError());
+    CMyComPtr<IOutStream> tail;
+    RINOK(GetUpdateOutput(agent.GetArc(), stream, tail))
     bool encrypted = false;
     RINOK(Archive_GetItemBoolProp(session.link.GetArchive(), index, kpidEncrypted, encrypted))
     auto *spec = new UpdateCallback(job, encrypted || session.link.PasswordWasAsked);
     CMyComPtr<IFolderArchiveUpdateCallback> callback = spec;
-    HRESULT h = agent.UpdateOneFile(stream, &mapped, 1, replacement, callback);
+    HRESULT h = agent.UpdateOneFile(tail, &mapped, 1, replacement, callback);
     HRESULT closed = file->Close();
     return h == S_OK ? closed : h;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; }
@@ -942,7 +1093,7 @@ int32_t av_can_delete_items(void *sessionValue) {
   auto &agent = *session.agent;
   return !session.virtualInput && agent.CanUpdate() && !agent.IsThere_ReadOnlyArc() &&
     session.link.Arcs.Size() == 1 && session.link.VolumePaths.Size() <= 1 &&
-    agent.GetArc().ArcStreamOffset == 0 && agent.GetArc().ErrorInfo.ErrorFlags == 0 &&
+    agent.GetArc().Offset >= 0 && agent.GetArc().ErrorInfo.ErrorFlags == 0 &&
     agent.GetArc().ErrorInfo.WarningFlags == 0;
 }
 
@@ -976,9 +1127,11 @@ int32_t av_delete_items(void *sessionValue, void *jobValue, const uint32_t *indi
     auto *file = new COutFileStream;
     CMyComPtr<IOutStream> stream = file;
     if (!file->Create_NEW(output)) return HRESULT_FROM_WIN32(GetLastError());
+    CMyComPtr<IOutStream> tail;
+    RINOK(GetUpdateOutput(agent.GetArc(), stream, tail))
     auto *spec = new UpdateCallback(job, session.link.PasswordWasAsked);
     CMyComPtr<IFolderArchiveUpdateCallback> callback = spec;
-    const HRESULT h = agent.DeleteItems(stream, selected.ConstData(), selected.Size(), callback);
+    const HRESULT h = agent.DeleteItems(tail, selected.ConstData(), selected.Size(), callback);
     const HRESULT closed = file->Close();
     return h == S_OK ? closed : h;
   } catch (const std::bad_alloc &) { return E_OUTOFMEMORY; } catch (...) { return E_FAIL; }

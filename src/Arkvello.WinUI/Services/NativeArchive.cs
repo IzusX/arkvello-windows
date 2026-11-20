@@ -44,6 +44,8 @@ public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
     private readonly Dictionary<uint, ArchiveProperty> properties = [];
     private int passwordRequests;
     private bool retryPassword;
+    private bool rememberPassword;
+    private string? operationPassword;
     internal IReadOnlyDictionary<uint, ArchiveProperty> Properties => new Dictionary<uint, ArchiveProperty>(properties);
     internal void ResetProperties() => properties.Clear();
     public Exception? CallbackError { get; private set; }
@@ -80,11 +82,34 @@ public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
         }
         finally { retryPassword = false; }
     }
+    internal ArchiveResult ExtractWithPasswordRetry(Func<ArchiveResult> test, Func<ArchiveResult>? extract)
+    {
+        int previousIssues = Issues.Count;
+        rememberPassword = true;
+        try
+        {
+            while (true)
+            {
+                int previousRequests = passwordRequests;
+                var result = test();
+                var failures = result.Issues.Skip(previousIssues).ToArray();
+                if (result.HResult == 0 && failures.Length == 0)
+                    return extract?.Invoke() ?? result;
+                if (result.Cancelled || passwordRequests == previousRequests || failures.Length == 0 ||
+                    failures.Any(e => (e.Flags & 0x10001u) != 0x10001u || e.Code is not (2 or 3 or 9)))
+                    return result;
+                lock (issues) issues.RemoveRange(previousIssues, issues.Count - previousIssues);
+                operationPassword = null;
+                retryPassword = true;
+            }
+        }
+        finally { rememberPassword = retryPassword = false; operationPassword = null; }
+    }
     internal IReadOnlyList<ArchiveEntry> Items => items.ToArray();
     internal void ResetItems() => items.Clear();
     public ArchiveJob(Func<ArchiveEvent, PromptReply> handler) : base(true)
     {
-        if (NativeApi.av_abi() != 4) throw new InvalidOperationException("Версия Arkvello.Native.dll не соответствует приложению. Восстановите полную сборку Arkvello.");
+        if (NativeApi.av_abi() != NativeApi.Abi) throw new InvalidOperationException("Версия Arkvello.Native.dll не соответствует приложению. Восстановите полную сборку Arkvello.");
         this.handler = handler;
         callback = OnEvent;
         SetHandle(NativeApi.av_job_create(callback, IntPtr.Zero));
@@ -112,9 +137,11 @@ public sealed class ArchiveJob : SafeHandleZeroOrMinusOneIsInvalid
                 items.Add(new(e.Index, e.Path1, (e.Flags & 1) != 0, (e.Flags & 2) != 0 ? e.Size1 : null, e.Size2,
                     (e.Flags & 4) != 0 ? DateTime.FromFileTimeUtc(checked((long)e.Time1)) : null));
             if (e.Kind == ArchiveEventKind.PublishBeforeDeleting) return PublishBeforeDeleting?.Invoke() == true ? 1 : 0;
-            var response = handler(e);
+            var response = e.Kind == ArchiveEventKind.Password && operationPassword != null
+                ? new(0, operationPassword) : handler(e);
             if (e.Kind == ArchiveEventKind.Password && response.Value >= 0)
             {
+                if (rememberPassword) operationPassword = response.Password ?? "";
                 var secret = (response.Password ?? "").ToCharArray();
                 try
                 {
@@ -139,7 +166,7 @@ public sealed class NativeArchive : SafeHandleZeroOrMinusOneIsInvalid
     private NativeArchive(IntPtr value) : base(true) => SetHandle(value);
     public static (NativeArchive? Archive, ArchiveResult Result) Open(string path, ArchiveJob job)
     {
-        if (NativeApi.av_abi() != 4) throw new InvalidOperationException("Unsupported Arkvello native ABI.");
+        if (NativeApi.av_abi() != NativeApi.Abi) throw new InvalidOperationException("Unsupported Arkvello native ABI.");
         int result = NativeApi.av_open(path, job, out var value);
         return (result == 0 ? new NativeArchive(value) : null, new(result, job.Issues));
     }
@@ -160,11 +187,19 @@ public sealed class NativeArchive : SafeHandleZeroOrMinusOneIsInvalid
     }
     public ArchiveResult Extract(IEnumerable<uint> indices, string destination, ArchiveJob job, bool test = false,
         ArchiveExtractSettings? settings = null)
+        => ExtractCore(indices, destination, job, test, settings ?? new(), false);
+
+    internal ArchiveResult ExtractInteractive(uint[] indices, string destination, ArchiveJob job, bool test,
+        ArchiveExtractSettings settings) => job.ExtractWithPasswordRetry(
+            () => ExtractCore(indices, "", job, true, settings, !test),
+            test ? null : () => ExtractCore(indices, destination, job, false, settings, false));
+
+    private ArchiveResult ExtractCore(IEnumerable<uint> indices, string destination, ArchiveJob job, bool test,
+        ArchiveExtractSettings settings, bool encryptedOnly)
     {
         uint[] selected = indices.Distinct().Order().ToArray();
         if (selected.Length == 0) throw new ArgumentException("An explicit item selection is required.", nameof(indices));
-        settings ??= new();
-        uint flags = (settings.Permissions ? 1u : 0) | (settings.Streams ? 2u : 0);
+        uint flags = (settings.Permissions ? 1u : 0) | (settings.Streams ? 2u : 0) | (encryptedOnly ? 4u : 0);
         int result = NativeApi.av_extract(this, job, selected, (uint)selected.Length, destination, test ? 1 : 0,
             (uint)settings.PathMode, (uint)settings.Overwrite, flags, settings.RelativePrefix);
         return new(result, job.Issues);
@@ -196,6 +231,10 @@ public sealed class NativeArchive : SafeHandleZeroOrMinusOneIsInvalid
 
 internal static class NativeApi
 {
+    internal const uint Abi = 5;
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    internal static extern int av_write_memory(string format, string method, uint level, uint threads, ulong dictionary,
+        ulong xzBlock, ulong limit, uint percent, out ulong compression, out ulong decompression, out ulong budget);
     private const string Library = "Arkvello.Native.dll";
     [StructLayout(LayoutKind.Sequential)]
     internal struct Event

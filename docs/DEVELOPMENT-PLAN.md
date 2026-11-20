@@ -5,7 +5,7 @@ with existing C++ services, approved stage 2 composition and authorized stage 3.
 Stage 3 implementation has a [runnable native slice](WINUI-SLICE.md), with final
 acceptance still pending. After receiving that report, the user authorized the
 next stage on 2026-11-18. Stage 4 implementation is available for desktop
-acceptance. The first implementation of stage 5 is available for validation.
+acceptance. The stage 5 archive workflows are implemented and verified locally.
 Stages 6-8 have not started.
 This progression does not waive the recorded stage 3 acceptance gates.
 Initial slice boundaries are recorded in
@@ -151,9 +151,10 @@ review finds no unresolved counterpart to the reported prototype defects.
 
 ## 5. Archive workflows and full parameter support
 
-Status: Add, Extract, Test and archive-member deletion are available in the
-development build. See [STAGE5-VALIDATION.md](STAGE5-VALIDATION.md) for the
-verified workflows and remaining parity checks.
+Status: Add, Extract, Test, copy-out, update and archive-member deletion are
+implemented and checked in the Windows 11 development build. See
+[STAGE5-VALIDATION.md](STAGE5-VALIDATION.md) for the evidence and open parity
+cases.
 
 - Complete archive browsing, nested archives, selected-item access/extraction,
   external opening/editing and update-back behavior, including temporary files.

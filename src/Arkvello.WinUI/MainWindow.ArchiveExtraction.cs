@@ -22,7 +22,7 @@ public sealed partial class MainWindow
     private sealed record ExtractionRequest(string Destination, ArchiveExtractSettings Settings, string? Password,
         bool SeparateFolders, bool RemoveDuplicateFolder);
 
-    private async Task Extract(bool test, IEnumerable<FileEntry>? explicitItems = null)
+    private async Task Extract(bool test, IEnumerable<FileEntry>? explicitItems = null, bool copy = false, bool samePanel = false)
     {
         if (!CanExtractOrTest) return;
         var session = archiveSession;
@@ -35,22 +35,22 @@ public sealed partial class MainWindow
         {
             string source = session?.RootPath ?? files[0];
             string folder = Path.GetDirectoryName(source)!;
-            string destination = OtherFilesystemDirectory.Length > 0 ? OtherFilesystemDirectory :
-                files.Length > 1 ? folder : Path.Combine(folder, ExtractedFolderName(source));
+            string destination = !samePanel && OtherFilesystemDirectory.Length > 0 ? OtherFilesystemDirectory :
+                copy || files.Length > 1 ? folder : Path.Combine(folder, ExtractedFolderName(source));
             var configured = await ConfigureExtraction(destination, files.Length > 1, archivePrefix,
-                session == null ? files.Length : indices.Length);
+                session == null ? files.Length : indices.Length, copy);
             if (configured == null || closing) return;
             request = configured;
         }
 
-        var result = await RunOperation(test ? "Проверка архива" : "Извлечение", job =>
+        var result = await RunOperation(test ? "Проверка архива" : copy ? "Копирование из архива" : "Извлечение", job =>
         {
             if (session == null) return ExtractFiles(files, request, test, job);
             if (indices.Length == 0) return new(0, job.Issues);
             var selected = indices.ToHashSet();
             var settings = ResolveExtractSettings(request, request.Destination,
                 session.Entries.Where(e => selected.Contains(e.Index)));
-            return session.Archive.Extract(indices, request.Destination, job, test, settings);
+            return session.Archive.ExtractInteractive(indices, request.Destination, job, test, settings);
         }, initialPassword: request.Password);
         if (test || closing) return;
         if (result?.Succeeded == true) RememberPath(extractDestinations, request.Destination);
@@ -59,7 +59,7 @@ public sealed partial class MainWindow
             await NavigateDirectory(OtherPanel, OtherFilesystemDirectory, remember: false, refresh: true);
     }
 
-    private async Task<ExtractionRequest?> ConfigureExtraction(string destination, bool multiple, string prefix, int count)
+    private async Task<ExtractionRequest?> ConfigureExtraction(string destination, bool multiple, string prefix, int count, bool copy)
     {
         var path = new TextBox { Header = "Папка назначения", Text = destination };
         var browse = new Button { Content = "Обзор…" };
@@ -78,7 +78,8 @@ public sealed partial class MainWindow
         ArchiveExtractPath[] pathChoices = prefix.Length > 0
             ? [ArchiveExtractPath.Full, ArchiveExtractPath.Current, ArchiveExtractPath.Flat, ArchiveExtractPath.Absolute]
             : [ArchiveExtractPath.Full, ArchiveExtractPath.Flat, ArchiveExtractPath.Absolute];
-        var mode = WriteChoice("Режим путей", pathChoices.Select(p => modes[(int)p]).ToArray());
+        var mode = WriteChoice("Режим путей", pathChoices.Select(p => modes[(int)p]).ToArray(),
+            copy ? Array.IndexOf(pathChoices, ArchiveExtractPath.Current) : 0);
         var overwrite = WriteChoice("Если файл уже существует", new[] { "Спрашивать", "Заменить", "Пропустить",
             "Переименовать извлекаемый", "Переименовать существующий" });
         var password = new PasswordBox { Header = "Пароль (если известен)", MaxLength = 4095 };
@@ -95,7 +96,8 @@ public sealed partial class MainWindow
             new TextBlock { Text = $"Выбрано элементов: {count:N0}" }, path, DestinationActions(browse, path, extractDestinations),
             separate, mode, overwrite, new Expander { Header = "Дополнительные параметры", Content = extra }, errorText
         }) form.Children.Add(control);
-        var dialog = NewDialog("Извлечение", new ScrollViewer { Content = form, MaxHeight = 540 }, "Извлечь", "Отмена");
+        var dialog = NewDialog(copy ? "Копировать из архива" : "Извлечение",
+            new ScrollViewer { Content = form, MaxHeight = 540 }, copy ? "Копировать" : "Извлечь", "Отмена");
         ExtractionRequest? request = null;
         dialog.PrimaryButtonClick += (_, e) =>
         {
@@ -136,7 +138,7 @@ public sealed partial class MainWindow
                     var members = target.ReadEntries(job);
                     string destination = request.SeparateFolders ? Path.Combine(request.Destination, ExtractedFolderName(path)) : request.Destination;
                     if (members.Count > 0)
-                        status = target.Extract(members.Select(e => e.Index), destination, job, test,
+                        status = target.ExtractInteractive(members.Select(e => e.Index).ToArray(), destination, job, test,
                             ResolveExtractSettings(request, destination, members)).HResult;
                 }
             }

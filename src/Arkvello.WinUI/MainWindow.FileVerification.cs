@@ -167,7 +167,25 @@ public sealed partial class MainWindow
         Invoke(AddToArchiveButton);
         var add = await WaitForDialog("Добавить в архив");
         var format = FindControls<ComboBox>(add).Single(c => Equals(c.Header, "Формат"));
-        format.SelectedItem = format.Items.Cast<ArchiveWriteFormat>().Single(f => f.Name.Equals("zip", StringComparison.OrdinalIgnoreCase));
+        ArchiveWriteFormat FindFormat(string name) => format.Items.Cast<ArchiveWriteFormat>()
+            .Single(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        var level = FindControls<ComboBox>(add).Single(c => Equals(c.Header, "Уровень сжатия"));
+        level.SelectedIndex = 7;
+        format.SelectedItem = FindFormat("xz");
+        const string xzBlockHeader = "Размер блока XZ";
+        FindControls<Expander>(add).Single().IsExpanded = true;
+        await Task.Delay(250);
+        record("XZ supports levels 1 through 9, block size and WinUI memory estimates",
+            level.Items.Count == 9 && level.Items.Cast<string>().First().StartsWith("1 ", StringComparison.Ordinal) &&
+            FindControls<TextBox>(add).Any(c => Equals(c.Header, xzBlockHeader) && c.IsEnabled) &&
+            FindControls<TextBlock>(add).Any(c => c.Text.StartsWith("Память при сжатии", StringComparison.Ordinal)));
+        format.SelectedItem = FindFormat("7z");
+        record("Switching formats restores the 7z compression level", level.SelectedIndex == 7);
+        format.SelectedItem = FindFormat("zip");
+        var precision = FindControls<ComboBox>(add).Single(c => Equals(c.Header, "Точность времени"));
+        precision.SelectedIndex = 2;
+        record("ZIP Unix precision disables NTFS creation and access time options",
+            FindControls<ComboBox>(add).Count(c => (Equals(c.Header, "Дата создания") || Equals(c.Header, "Дата доступа")) && !c.IsEnabled) == 2);
         string zip = Path.ChangeExtension(input, ".zip");
         record("Add dialog changes archive extension with the selected format",
             FindControls<TextBox>(add).Single(c => Equals(c.Header, "Путь к архиву")).Text == zip);
@@ -191,6 +209,15 @@ public sealed partial class MainWindow
         await OpenArchive(zip, false);
         list.SelectedItem = entries.Single(e => e.Name == Path.GetFileName(input));
         UpdateStatus();
+        Invoke(CopyToButton);
+        var copy = await WaitForDialog("Копировать из архива");
+        string copied = Path.Combine(folder, "copied-member");
+        FindControls<TextBox>(copy).Single(c => Equals(c.Header, "Папка назначения")).Text = copied;
+        InvokeDialogButton(copy, "Копировать");
+        InvokeDialogButton(await WaitForDialog("Операция завершена"), "Закрыть");
+        await WaitUntilReady();
+        record("Copy command copies the selected member out of the open archive",
+            File.ReadAllText(Path.Combine(copied, Path.GetFileName(input))) == File.ReadAllText(input) && archiveSession?.RootPath == zip);
         Invoke(DeleteButton);
         InvokeDialogButton(await WaitForDialog("Удалить из архива?"), "Удалить");
         await WaitUntilReady();
