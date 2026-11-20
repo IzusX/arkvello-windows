@@ -83,9 +83,24 @@ internal static class ArchiveWriting
         bool preserve = false;
         bool published = false;
         Exception? publicationError = null;
-        void PublishNew()
+        ArchiveSourceStamp? before = null;
+        void Publish()
         {
-            if (request.Volumes.Length == 0)
+            if (before != null)
+            {
+                try
+                {
+                    File.Replace(prepared, target, backup, ignoreMetadataErrors: false);
+                    if (ArchiveSourceStamp.Capture(backup) != before)
+                        throw new IOException("Исходный архив изменился во время сохранения.");
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    preserve = true;
+                    throw new IOException($"{error.Message} Файлы восстановления: {staging}", error);
+                }
+            }
+            else if (request.Volumes.Length == 0)
                 File.Move(prepared, target);
             else
             {
@@ -102,7 +117,6 @@ internal static class ArchiveWriting
         }
         try
         {
-            ArchiveSourceStamp? before = null;
             using (var source = request.UpdateExisting ? OpenUpdateSource(target) : null)
             {
                 if (source != null) before = ArchiveSourceStamp.Capture(source, job);
@@ -117,10 +131,10 @@ internal static class ArchiveWriting
                 if (request.DeleteSources)
                     job.PublishBeforeDeleting = () =>
                     {
-                        // UpdateArchive has closed all outputs before its source-cleanup
-                        // callbacks. An unsuccessful publication leaves every input intact.
+                        // UpdateArchive closes the archive and its outputs before
+                        // source cleanup. Release our read lease before replacement.
                         if (job.Issues.Count != 0 || job.CancellationRequested) return false;
-                        try { PublishNew(); return true; }
+                        try { source?.Dispose(); Publish(); return true; }
                         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                         { publicationError = error; return false; }
                     };
@@ -137,22 +151,7 @@ internal static class ArchiveWriting
                 }
                 if (!published) job.ThrowIfCancellationRequested();
             }
-            if (before != null)
-            {
-                try
-                {
-                    File.Replace(prepared, target, backup, ignoreMetadataErrors: false);
-                    if (ArchiveSourceStamp.Capture(backup) != before)
-                        throw new IOException("Исходный архив изменился во время сохранения.");
-                }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-                {
-                    preserve = true;
-                    throw new IOException($"{error.Message} Файлы восстановления: {staging}", error);
-                }
-            }
-            else if (!published)
-                PublishNew();
+            if (!published) Publish();
             if (request.DeleteSources)
             {
                 foreach (string path in paths.Where(path => File.Exists(path) || Directory.Exists(path)))

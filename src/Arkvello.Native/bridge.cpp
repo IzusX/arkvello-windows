@@ -763,7 +763,7 @@ int32_t av_write_archive(void *value, const AvWriteOptions *request,
     options.NtSecurity.Val = (request->flags & 16) != 0;
     options.SetArcMTime = (request->flags & 32) != 0;
     options.DeleteAfterCompressing = (request->flags & 64) != 0;
-    if (options.DeleteAfterCompressing && (request->source || request->action != 0 ||
+    if (options.DeleteAfterCompressing && (request->action != 0 ||
         options.OpenShareForWrite)) return E_INVALIDARG;
     if (request->sfxModule) {
       options.SfxMode = true;

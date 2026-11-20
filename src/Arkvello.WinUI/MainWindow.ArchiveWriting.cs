@@ -350,8 +350,8 @@ public sealed partial class MainWindow
                     if (exists && sizes.Length > 0) throw new IOException("Укажите новое имя для многотомного архива.");
                     if (deleteSources.IsEnabled && deleteSources.IsChecked == true)
                     {
-                        if (exists || action.SelectedIndex != 0 || shared.IsChecked == true)
-                            throw new IOException("Удаление исходников доступно при создании нового архива в режиме «Добавить и заменить», без совместной записи.");
+                        if (action.SelectedIndex != 0 || shared.IsChecked == true)
+                            throw new IOException("Удаление исходников доступно в режиме «Добавить и заменить», без совместной записи.");
                         flags |= ArchiveWriteFlags.DeleteSources;
                     }
                     request = new(target, selected.Name, paths, options, sizes, secret, sfxModule, exists,

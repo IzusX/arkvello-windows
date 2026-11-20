@@ -238,6 +238,30 @@ void CheckArchiveWriting()
             result.Succeeded && !Directory.Exists(disposableFolder) && Original7Zip("x", "-y", "-o" + folderOutput, folderArchive) == 0 &&
             File.ReadAllText(Path.Combine(folderOutput, "folder-after-archive", "папка", "contents.txt")) == "verified after removing folder");
     }
+    string guardedUpdate = Directory.CreateDirectory(Path.Combine(output, "guarded-update")).FullName;
+    string updatedArchive = Path.Combine(guardedUpdate, "existing.7z");
+    File.Copy(request.Destination, updatedArchive);
+    string inputForUpdate = Path.Combine(input, "move-into-existing.txt");
+    File.WriteAllText(inputForUpdate, "archive publication precedes source removal");
+    var moveIntoArchive = removal with { Destination = updatedArchive, Paths = [inputForUpdate], Volumes = [], UpdateExisting = true };
+    using (var job = new ArchiveJob(_ => new()))
+    using (var blocker = new FileStream(updatedArchive, FileMode.Open, FileAccess.Read, FileShare.Read))
+    {
+        bool conflict = false;
+        try { ArchiveWriting.Run(moveIntoArchive, job); }
+        catch (IOException) { conflict = true; }
+        Check("blocked archive replacement preserves the original and the selected source",
+            conflict && File.Exists(inputForUpdate) && File.ReadAllBytes(updatedArchive).SequenceEqual(File.ReadAllBytes(request.Destination)));
+    }
+    using (var job = new ArchiveJob(_ => new()))
+    {
+        var result = ArchiveWriting.Run(moveIntoArchive, job);
+        string updateOutput = Path.Combine(output, "move-into-existing");
+        Check($"archive update removes the source after publishing its archived bytes (0x{result.HResult:X8})",
+            result.Succeeded && !File.Exists(inputForUpdate) && Original7Zip("x", "-y", "-o" + updateOutput, updatedArchive) == 0 &&
+            File.ReadAllText(Path.Combine(updateOutput, "move-into-existing.txt")) == "archive publication precedes source removal" &&
+            File.Exists(Path.Combine(updateOutput, Path.GetFileName(member))));
+    }
     byte[] before = File.ReadAllBytes(request.Destination);
     bool cancelledDuringWriting = false, addingLargeFile = false;
     using (var job = new ArchiveJob(e =>

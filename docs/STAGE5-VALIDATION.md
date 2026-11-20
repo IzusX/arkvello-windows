@@ -16,8 +16,9 @@ native bridge ABI 5.
   during encoding, then replaces the destination. It checks the prior archive
   retained by the atomic replacement. Conflicts or filesystem failures retain
   recovery files. Publication of a new archive or its volumes never overwrites
-  an existing file. When creating a new archive, the option to remove selected
-  regular files and folders delegates cleanup to 7-Zip after publication.
+  an existing file. When creating or updating an archive in Add mode, the
+  option to remove selected regular files and folders delegates cleanup to
+  7-Zip after publication.
   Cleanup rejects reparse-point paths and reports inputs left on disk.
 - **Extract and Test** work on an open archive or files selected in a filesystem
   panel. Extraction offers path and overwrite modes, NTFS metadata, a password,
@@ -36,16 +37,16 @@ The bridge checks verified 7z, ZIP, TAR, GZip, BZip2 and XZ with the pinned
 original 7-Zip console. They compared member bytes, checked all four update
 modes, restored an exact ZIP creation time, checked a preserved SFX stub and
 reopened a nested archive after deletion. They also checked cancellation during
-an update, split-volume conflicts before source cleanup, folder cleanup and
-password retries for ZIP AES and 7z member data.
+  an update, split-volume and replacement conflicts before source cleanup,
+  folder cleanup and password retries for ZIP AES and 7z member data.
 
-Windows 11 passed 155 bridge, 47 filesystem, 91 WinUI command and interaction,
+Windows 11 passed 157 bridge, 47 filesystem, 91 WinUI command and interaction,
 and 34 WinUI navigation and layout checks. Desktop checks exercised the
 format-specific Add controls, then created, extracted, copied and updated real
 archive files through the WinUI commands.
 
 Remaining parity work covers drag/drop and clipboard for archive members,
-delete-after-compression when updating an existing archive or traversing links,
-and validation of unusual NTFS metadata and less common codec options.
+delete-after-compression when traversing links, and validation of unusual NTFS
+metadata and less common codec options.
 Physical Explorer interaction, Windows 10 and clean-machine installation remain
 unverified. Explorer registration and release validation belong to stages 7–8.
